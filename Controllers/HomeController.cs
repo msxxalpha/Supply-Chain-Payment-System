@@ -9,4 +9,3 @@ namespace Indamin.Payment.Controllers;
   TotalAllocated=await db.PaymentRunInvoices.Where(x=>x.PaymentRun!.Status==PaymentRunStatus.Approved).SumAsync(x=>(decimal?)x.AllocatedAmount)??0
  });}
  public record HomeVm{public string Name{get;init;}="";public int Parts{get;init;}public int Suppliers{get;init;}public int Mappings{get;init;}public int Parameters{get;init;}public int ApprovedRuns{get;init;}public decimal TotalAllocated{get;init;}}
-}
