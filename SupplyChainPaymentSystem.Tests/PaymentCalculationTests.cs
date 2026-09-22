@@ -1,4 +1,4 @@
-using Indamin.Payment.Services;
+using Indamin.Payment.Services;using Xunit;
 namespace Indamin.Payment.Tests;
 public class PaymentCalculationTests{
  [Theory][InlineData(10,100,1)][InlineData(25,100,2)][InlineData(50,100,2)][InlineData(51,100,1)][InlineData(75,100,1)][InlineData(76,100,4)][InlineData(100,100,4)][InlineData(130,100,4)][InlineData(131,100,5)]public void AgeScore_FollowsBoundaries(int a,int c,int e)=>Assert.Equal(e,PaymentCalculationService.AgeScore(a,c));
