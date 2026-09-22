@@ -1,0 +1,17 @@
+name: build-and-test
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet restore Indamin.Payment.Web.csproj
+      - run: dotnet build Indamin.Payment.Web.csproj --configuration Release --no-restore
+      - run: dotnet test SupplyChainPaymentSystem.Tests/SupplyChainPaymentSystem.Tests.csproj --configuration Release --no-restore
