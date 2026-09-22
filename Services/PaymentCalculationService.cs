@@ -1,4 +1,5 @@
-using System.Security.Cryptography;using System.Text;\nusing Indamin.Payment.Data;using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;using System.Text;
+using Indamin.Payment.Data;using Microsoft.EntityFrameworkCore;
 namespace Indamin.Payment.Services;
 public class PaymentCalculationService(AppDbContext db){
  public const decimal WeightTolerance=.0001m;
