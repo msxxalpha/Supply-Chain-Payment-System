@@ -2,6 +2,10 @@ IF DB_ID(N'IndaminSupplyChainPayment') IS NULL CREATE DATABASE [IndaminSupplyCha
 GO
 USE [IndaminSupplyChainPayment];
 GO
+CREATE TABLE dbo.CompanySettings(Id int NOT NULL CONSTRAINT PK_CompanySettings PRIMARY KEY,CompanyName nvarchar(300) NOT NULL,ShortName nvarchar(100) NOT NULL,SystemName nvarchar(300) NOT NULL,Slogan nvarchar(500) NOT NULL,Website nvarchar(500) NULL,Phone nvarchar(100) NULL,Email nvarchar(200) NULL,Address nvarchar(1000) NULL,EconomicCode nvarchar(100) NULL,NationalId nvarchar(100) NULL,FooterText nvarchar(1000) NULL,PrimaryColor nvarchar(20) NOT NULL,SecondaryColor nvarchar(20) NOT NULL,LogoBytes varbinary(max) NULL,LogoContentType nvarchar(100) NULL,FaviconBytes varbinary(max) NULL,FaviconContentType nvarchar(100) NULL,UpdatedAt datetime2 NOT NULL DEFAULT(sysutcdatetime()));
+GO
+INSERT dbo.CompanySettings(Id,CompanyName,ShortName,SystemName,Slogan,PrimaryColor,SecondaryColor) VALUES(1,N'ایندامین سایپا',N'ایندامین',N'سامانه تخصیص و پرداخت مالی تامین‌کنندگان',N'با کمک ما برانید',N'#102a43',N'#2d7fb3');
+GO
 CREATE TABLE dbo.AppUsers(Id int IDENTITY PRIMARY KEY,UserName nvarchar(100) NOT NULL,DisplayName nvarchar(200) NOT NULL,IsAdmin bit NOT NULL DEFAULT(0),IsActive bit NOT NULL DEFAULT(1),PasswordHash nvarchar(1000) NOT NULL);CREATE UNIQUE INDEX UX_AppUsers_UserName ON dbo.AppUsers(UserName);
 CREATE TABLE dbo.LookupValues(Id int IDENTITY PRIMARY KEY,GroupCode nvarchar(50) NOT NULL,Code nvarchar(100) NOT NULL,Title nvarchar(200) NOT NULL,SortOrder int NOT NULL DEFAULT(1),IsActive bit NOT NULL DEFAULT(1));CREATE UNIQUE INDEX UX_LookupValues_Group_Code ON dbo.LookupValues(GroupCode,Code);
 CREATE TABLE dbo.Parts(Id int IDENTITY PRIMARY KEY,Code nvarchar(100) NOT NULL,Title nvarchar(300) NOT NULL,TypeId int NOT NULL,IsActive bit NOT NULL DEFAULT(1),CONSTRAINT FK_Parts_Type FOREIGN KEY(TypeId) REFERENCES dbo.LookupValues(Id));CREATE UNIQUE INDEX UX_Parts_Code ON dbo.Parts(Code);
