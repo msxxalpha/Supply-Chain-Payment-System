@@ -1,3 +1,4 @@
+using Indamin.Payment.Services;
 using System.Security.Claims;using Indamin.Payment.Data;using Microsoft.AspNetCore.Authorization;using Microsoft.AspNetCore.Authentication;using Microsoft.AspNetCore.Authentication.Cookies;using Microsoft.AspNetCore.Mvc;using Microsoft.EntityFrameworkCore;
 namespace Indamin.Payment.Controllers;
 public class AccountController(AppDbContext db,CompanySettingsService companySettings):Controller{
