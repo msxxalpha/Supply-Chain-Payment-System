@@ -10,7 +10,7 @@ public class ReportsController(AppDbContext db):Controller
 {
  public async Task<IActionResult> Index()
  {
-  var runs=await db.PaymentRuns.AsNoTracking().OrderByDescending(x=>x.Id).ToListAsync();
+  var runs=await db.PaymentRuns.AsNoTracking().Include(x=>x.Invoices).OrderByDescending(x=>x.Id).ToListAsync();
   var approved=await db.PaymentRunInvoices.AsNoTracking().Where(x=>x.PaymentRun!.Status==PaymentRunStatus.Approved)
    .Select(x=>new InvoiceFact(x.SupplierId,x.SupplierTitle,x.PartId,x.PartTitle,x.OriginalDebt,x.AllocatedAmount,x.DebtAgeDays,x.ContractSettlementDays)).ToListAsync();
   var suppliers=approved.GroupBy(x=>new{x.SupplierId,x.SupplierTitle}).Select(g=>{var o=g.Sum(x=>x.OriginalDebt);var a=g.Sum(x=>x.AllocatedAmount);var rem=Math.Max(0,o-a);var ar=g.Count()==0?0:g.Average(x=>x.ContractSettlementDays>0?(decimal)x.DebtAgeDays/x.ContractSettlementDays:1);var od=g.Count(x=>x.ContractSettlementDays>0&&x.DebtAgeDays>x.ContractSettlementDays);return new SupplierRow(g.Key.SupplierId??0,g.Key.SupplierTitle,g.Count(),o,a,rem,o>0?a/o:0,ar,od,0);}).OrderByDescending(x=>x.Priority).ToList();
