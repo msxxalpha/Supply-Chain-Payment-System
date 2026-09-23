@@ -14,4 +14,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   if(t)t.querySelectorAll("tbody tr").forEach(r=>r.style.display=r.innerText.toLocaleLowerCase("fa-IR").includes(q)?"":"none");
  }));
 });
-document.addEventListener("DOMContentLoaded",()=>document.querySelectorAll("[data-confirm]").forEach(e=>e.addEventListener("click",x=>{if(!confirm(e.dataset.confirm||"آیا مطمئن هستید؟"))x.preventDefault();})));
+document.addEventListener("DOMContentLoaded",()=>{
+ document.querySelectorAll("[data-confirm]").forEach(e=>e.addEventListener("click",x=>{if(!confirm(e.dataset.confirm||"آیا مطمئن هستید؟"))x.preventDefault();}));
+ const modal=document.getElementById("missingReferencesModal");if(modal&&modal.dataset.showOnLoad==="true"&&window.bootstrap){bootstrap.Modal.getOrCreateInstance(modal).show();}
+});
