@@ -1,4 +1,4 @@
-using Indamin.Payment.Services;using Xunit;
+using Indamin.Payment.Services;using ClosedXML.Excel;using Xunit;
 namespace Indamin.Payment.Tests;
 public class PaymentCalculationTests{
  [Theory][InlineData(10,100,1)][InlineData(25,100,2)][InlineData(50,100,2)][InlineData(51,100,1)][InlineData(75,100,1)][InlineData(76,100,4)][InlineData(100,100,4)][InlineData(130,100,4)][InlineData(131,100,5)]public void AgeScore_FollowsBoundaries(int a,int c,int e)=>Assert.Equal(e,PaymentCalculationService.AgeScore(a,c));
@@ -6,5 +6,6 @@ public class PaymentCalculationTests{
  [Fact]public void CompositeKey_NormalizesArabicLetters()=>Assert.Equal(PaymentCalculationService.Key("R","انبار","قطعه ك","تامین‌کننده"),PaymentCalculationService.Key("r","انبار","قطعه ک","تامین‌کننده"));
  [Fact]public void AllocateBudget_NeverExceedsDebtOrBudget(){var rows=new List<PaymentCalculationRow>{new(){RemainingDebt=40,WeightedScore=5},new(){RemainingDebt=80,WeightedScore=3}};PaymentCalculationService.AllocateBudget(200,rows);Assert.True(rows.Sum(x=>x.AllocatedAmount)<=120);Assert.All(rows,x=>Assert.InRange(x.AllocatedAmount,0,x.RemainingDebt));}
  [Fact]public void AllocateBudget_DistributesAvailableBudgetByWeightedScore(){var rows=new List<PaymentCalculationRow>{new(){RemainingDebt=1000,WeightedScore=3},new(){RemainingDebt=1000,WeightedScore=1}};PaymentCalculationService.AllocateBudget(100,rows);Assert.Equal(100m,rows.Sum(x=>x.AllocatedAmount));Assert.Equal(75m,rows[0].AllocatedAmount);Assert.Equal(25m,rows[1].AllocatedAmount);}
+ [Fact]public void SupplierPartExcel_ParsesCodes(){using var wb=new XLWorkbook();var ws=wb.Worksheets.Add("ارتباط");ws.Cell(1,1).Value="کد تامین کننده";ws.Cell(1,2).Value="کد قطعه";ws.Cell(1,3).Value="ظرفیت تامین";ws.Cell(1,4).Value="مهلت تسویه (روز)";ws.Cell(1,5).Value="فعال یا غیرفعال بودن";ws.Cell(2,1).Value="SUP-001";ws.Cell(2,2).Value="P-001";ws.Cell(2,3).Value=125.5m;ws.Cell(2,4).Value=30;ws.Cell(2,5).Value="فعال";using var ms=new MemoryStream();wb.SaveAs(ms);ms.Position=0;var rows=new ExcelService().ReadSupplierParts(ms,new Dictionary<string,int>{{"sup-001",7}},new Dictionary<string,int>{{"p-001",11}},out var errors);Assert.Empty(errors);var x=Assert.Single(rows);Assert.Equal(7,x.SupplierId);Assert.Equal(11,x.PartId);Assert.Equal(125.5m,x.SupplyCapacity);Assert.Equal(30,x.ContractSettlementDays);Assert.True(x.IsActive);}
  [Fact]public void KeyHash_NormalizesBusinessKey(){Assert.Equal(PaymentCalculationService.KeyHash("R","انبار","کالا ك","تامین کننده"),PaymentCalculationService.KeyHash("r","انبار","کالا ک","تامین کننده"));}
 }
