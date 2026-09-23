@@ -1,9 +1,22 @@
-@model Indamin.Payment.Data.PaymentWizardState
+
+@if(Model.MissingParts.Count>0 || Model.MissingSuppliers.Count>0){
+<div class="modal fade" id="missingReferencesModal" tabindex="-1" aria-labelledby="missingReferencesLabel" aria-hidden="true" data-show-on-load="true">
+ <div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content border-0 shadow-lg">
+  <div class="modal-header"><div><h5 class="modal-title" id="missingReferencesLabel">اطلاعات پایه موجود نیست</h5><div class="subtle mt-1">فایل Excel بارگذاری شد، اما پیش از محاسبه چند قلم در اطلاعات پایه سامانه پیدا نشد.</div></div><button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal" aria-label="بستن"></button></div>
+  <div class="modal-body"><div class="row g-3">
+   @if(Model.MissingParts.Count>0){<div class="col-lg-6"><div class="info-box h-100"><h6>کالاهای تعریف‌نشده (@Model.MissingParts.Count)</h6><ul class="missing-reference-list">@foreach(var x in Model.MissingParts){<li>@x</li>}</ul><a class="btn btn-sm btn-outline-primary mt-2" href="/Setup/Parts" target="_blank">تعریف کالاها</a></div></div>}
+   @if(Model.MissingSuppliers.Count>0){<div class="col-lg-6"><div class="info-box h-100"><h6>تامین‌کنندگان تعریف‌نشده (@Model.MissingSuppliers.Count)</h6><ul class="missing-reference-list">@foreach(var x in Model.MissingSuppliers){<li>@x</li>}</ul><a class="btn btn-sm btn-outline-primary mt-2" href="/Setup/Suppliers" target="_blank">تعریف تامین‌کنندگان</a></div></div>}
+  </div><div class="alert alert-warning mt-3 mb-0">پس از تعریف موارد بالا، همین فایل را دوباره بارگذاری کنید تا محاسبه انجام شود.</div></div>
+  <div class="modal-footer"><button type="button" class="btn btn-main" data-bs-dismiss="modal">متوجه شدم</button></div>
+ </div></div>
+</div>
+}@model Indamin.Payment.Data.PaymentWizardState
 @using Indamin.Payment.Data
 @{ViewData["Title"]="گام دوم؛ جذب و محاسبه";var manual=Model.Parameters.Where(x=>x.ScoringMethod==ParameterScoringMethod.Manual).ToList();var idx=0;}
 <div class="wizard-steps"><div class="wizard-step done"><span class="num">✓</span><div><b>تنظیمات محاسبه</b><small>@Model.CalculationDateJalali</small></div></div><div class="wizard-step active"><span class="num">۲</span><div><b>جذب و محاسبه</b><small>Excel، امتیاز و تخصیص</small></div></div><div class="wizard-step"><span class="num">۳</span><div><b>تجمیع و تایید</b><small>خلاصه تامین‌کنندگان</small></div></div></div>
 <div class="page-header"><div><div class="eyebrow">محاسبه نوبت پرداخت</div><h2>@Model.Title</h2><p class="text-muted">بازه رسید: @Model.PeriodFromJalali تا @Model.PeriodToJalali — فایل فعلی: @(Model.SourceFileName??"هنوز بارگذاری نشده")</p></div><div class="export-group">@if(Model.Rows.Count>0){<a class="btn btn-outline-secondary" href="/PaymentWizard/ExportPreview">خروجی Excel محاسبه</a>}</div></div>
 <div class="payment-kpi-grid"><div class="payment-kpi"><span>کل بدهی جذب‌شده</span><strong>@Model.ImportedDebt.ToString("N0")</strong><small>@Model.AmountUnit</small></div><div class="payment-kpi"><span>مانده بدهی پس از پرداخت‌های قبلی</span><strong>@Model.RemainingDebt.ToString("N0")</strong><small>رسیدهای صفرشده نمایش داده نمی‌شوند</small></div><div class="payment-kpi"><span>بودجه این نوبت</span><strong>@Model.TotalAllocationBudget.ToString("N0")</strong><small>@Model.AmountUnit</small></div><div class="payment-kpi"><span>مبلغ فعلی قابل تخصیص</span><strong>@Model.Rows.Sum(x=>x.AllocatedAmount).ToString("N0")</strong><small>@Model.Rows.Count رسید فعال</small></div></div>
+<div class="budget-focus mb-3"><div class="row align-items-center g-2"><div class="col-lg-8"><label class="form-label mb-1">مبلغ کل قابل تخصیص این نوبت</label><input class="form-control" value="@Model.TotalAllocationBudget.ToString("N0") @Model.AmountUnit" readonly aria-label="مبلغ کل قابل تخصیص"></div><div class="col-lg-4 text-muted small">این مبلغ سقف کل تخصیص مرحله جاری است.</div></div></div>
 <div class="form-panel mb-3"><div class="panel-title"><div><h4>جذب فاکتورها از Excel</h4><span>ستون‌ها: شماره رسید، انبار، نام کالا، نام تامین کننده، مبلغ بدهی، تاریخ رسید</span></div></div><form method="post" action="/PaymentWizard/Import" enctype="multipart/form-data" class="row g-2 align-items-end">@Html.AntiForgeryToken()<div class="col-lg-8"><label class="form-label">فایل Excel</label><input class="form-control" type="file" name="file" accept=".xlsx,.xls" required></div><div class="col-lg-4"><button class="btn btn-main w-100">جذب، کنترل و محاسبه</button></div></form></div>
 @if(Model.Rows.Count==0){<div class="info-box">برای شروع، فایل Excel را بارگذاری کنید. سامانه وجود کالا، تامین‌کننده و ارتباط فعال قطعه–تامین‌کننده را کنترل می‌کند و تخصیص‌های تاییدشده قبلی را از بدهی همان کلید چهارگانه کسر می‌کند.</div>}
 @if(Model.Rows.Count>0){
