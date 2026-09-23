@@ -1,3 +1,4 @@
+@model Indamin.Payment.Data.PaymentWizardState
 
 @if(Model.MissingParts.Count>0 || Model.MissingSuppliers.Count>0){
 <div class="modal fade" id="missingReferencesModal" tabindex="-1" aria-labelledby="missingReferencesLabel" aria-hidden="true" data-show-on-load="true">
@@ -10,7 +11,7 @@
   <div class="modal-footer"><button type="button" class="btn btn-main" data-bs-dismiss="modal">متوجه شدم</button></div>
  </div></div>
 </div>
-}@model Indamin.Payment.Data.PaymentWizardState
+}
 @using Indamin.Payment.Data
 @{ViewData["Title"]="گام دوم؛ جذب و محاسبه";var manual=Model.Parameters.Where(x=>x.ScoringMethod==ParameterScoringMethod.Manual).ToList();var idx=0;}
 <div class="wizard-steps"><div class="wizard-step done"><span class="num">✓</span><div><b>تنظیمات محاسبه</b><small>@Model.CalculationDateJalali</small></div></div><div class="wizard-step active"><span class="num">۲</span><div><b>جذب و محاسبه</b><small>Excel، امتیاز و تخصیص</small></div></div><div class="wizard-step"><span class="num">۳</span><div><b>تجمیع و تایید</b><small>خلاصه تامین‌کنندگان</small></div></div></div>
