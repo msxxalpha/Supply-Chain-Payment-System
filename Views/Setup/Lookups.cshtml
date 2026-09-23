@@ -1,17 +1,81 @@
 @model Indamin.Payment.Controllers.SetupController.LookupVm
-@{ViewData["Title"]="سایر اطلاعات پایه";}
-<div class="page-header"><div><div class="eyebrow">اطلاعات پایه</div><h2>سایر اطلاعات پایه و تنظیمات برنامه</h2><p class="text-muted">مقادیر انتخابی و اطلاعات برند/شرکت مورد استفاده در بخش‌های مختلف سامانه از این صفحه مدیریت می‌شوند.</p></div><form method="get"><select class="form-select" name="group" onchange="this.form.submit()">@foreach(var g in Model.Groups){<option value="@g" selected="@(g==Model.Group)">@g</option>}</select></form></div>
+@{ViewData["Title"]="سایر اطلاعات پایه";var groupTitles=new Dictionary<string,string>{{"PART_TYPE","انواع کالا"},{"SUPPLIER_ACTIVITY","حوزه فعالیت تامین‌کنندگان"}};}
 
-<div class="table-panel mb-4"><div class="panel-title"><div><h4>مدیریت آیتم‌های اطلاعات پایه</h4><span>هر آیتم قابل ویرایش، فعال/غیرفعال‌سازی و مرتب‌سازی است.</span></div></div>
-<div class="form-panel mb-3"><form method="post" action="/Setup/AddLookup" class="row g-2">@Html.AntiForgeryToken()<div class="col-lg-3"><label class="form-label">گروه</label><input class="form-control" name="groupCode" value="@Model.Group" required></div><div class="col-lg-3"><label class="form-label">کد</label><input class="form-control" name="code" required></div><div class="col-lg-4"><label class="form-label">عنوان</label><input class="form-control" name="title" required></div><div class="col-lg-1"><label class="form-label">ترتیب</label><input class="form-control" type="number" name="sortOrder" value="1"></div><div class="col-lg-1 d-flex align-items-end"><button class="btn btn-main w-100">افزودن</button></div></form></div>
-<div class="toolbar"><input class="form-control" data-table-filter="#lookups" placeholder="جست‌وجوی کد یا عنوان..."></div><div class="table-responsive"><table id="lookups" class="table modern-table"><thead><tr><th>کد</th><th>عنوان</th><th>ترتیب</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>@foreach(var x in Model.Rows){<tr><td>@x.Code</td><td class="fw-bold">@x.Title</td><td>@x.SortOrder</td><td>@(x.IsActive?"فعال":"غیرفعال")</td><td><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#lookup-@x.Id">ویرایش</button><form method="post" action="/Setup/ToggleLookup" class="d-inline">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@x.Id"><input type="hidden" name="group" value="@Model.Group"><button class="btn btn-sm btn-outline-secondary">@(x.IsActive?"غیرفعال":"فعال")</button></form></td></tr><tr class="collapse" id="lookup-@x.Id"><td colspan="5"><form method="post" action="/Setup/EditLookup" class="row g-2 align-items-end">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@x.Id"><input type="hidden" name="group" value="@Model.Group"><div class="col-md-3"><label class="form-label">کد</label><input class="form-control" name="code" value="@x.Code"></div><div class="col-md-4"><label class="form-label">عنوان</label><input class="form-control" name="title" value="@x.Title"></div><div class="col-md-2"><label class="form-label">ترتیب</label><input class="form-control" type="number" name="sortOrder" value="@x.SortOrder"></div><div class="col-md-1"><label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" checked="@x.IsActive"> فعال</label></div><div class="col-md-2"><button class="btn btn-main w-100">ذخیره ویرایش</button></div></form></td></tr>}</tbody></table></div></div>
+<div class="page-header">
+  <div><div class="eyebrow">اطلاعات پایه</div><h2>سایر اطلاعات پایه و تنظیمات برنامه</h2><p class="text-muted">هر بخش در یک تب مستقل قرار دارد تا مدیریت اطلاعات پایه و تنظیمات شرکت سریع‌تر و منظم‌تر انجام شود.</p></div>
+</div>
 
-<div class="form-panel"><div class="panel-title"><div><h4>تنظیمات شرکت و برنامه</h4><span>نام، لوگو، شعار، اطلاعات تماس، رنگ‌بندی و متن‌های عمومی سامانه را یک‌جا تنظیم کنید.</span></div><div class="company-settings-preview">@if(Model.Company.LogoBytes?.Length>0){<img src="/Brand/Logo?v=@Model.Company.UpdatedAt.Ticks" alt="لوگو">}else{<div class="company-logo-placeholder">IS</div>}<div><strong>@Model.Company.CompanyName</strong><small>@Model.Company.SystemName</small></div></div></div>
-<form method="post" action="/Setup/SaveCompanySettings" enctype="multipart/form-data">@Html.AntiForgeryToken()<div class="row g-3"><div class="col-lg-4"><label class="form-label">نام کامل شرکت</label><input class="form-control" name="CompanyName" value="@Model.Company.CompanyName" required></div><div class="col-lg-2"><label class="form-label">نام کوتاه</label><input class="form-control" name="ShortName" value="@Model.Company.ShortName"></div><div class="col-lg-6"><label class="form-label">نام سامانه</label><input class="form-control" name="SystemName" value="@Model.Company.SystemName" required></div>
-<div class="col-lg-6"><label class="form-label">شعار</label><input class="form-control" name="Slogan" value="@Model.Company.Slogan"></div><div class="col-lg-3"><label class="form-label">وب‌سایت</label><input class="form-control" name="Website" value="@Model.Company.Website"></div><div class="col-lg-3"><label class="form-label">تلفن</label><input class="form-control" name="Phone" value="@Model.Company.Phone"></div>
-<div class="col-lg-4"><label class="form-label">ایمیل</label><input class="form-control" type="email" name="Email" value="@Model.Company.Email"></div><div class="col-lg-4"><label class="form-label">شناسه ملی</label><input class="form-control" name="NationalId" value="@Model.Company.NationalId"></div><div class="col-lg-4"><label class="form-label">کد اقتصادی</label><input class="form-control" name="EconomicCode" value="@Model.Company.EconomicCode"></div>
-<div class="col-12"><label class="form-label">نشانی</label><textarea class="form-control" name="Address" rows="2">@Model.Company.Address</textarea></div><div class="col-12"><label class="form-label">متن پایین صفحات</label><textarea class="form-control" name="FooterText" rows="2">@Model.Company.FooterText</textarea></div>
-<div class="col-md-6"><label class="form-label">رنگ اصلی</label><div class="input-group"><input class="form-control" name="PrimaryColor" value="@Model.Company.PrimaryColor" pattern="^#[0-9a-fA-F]{6}$"><input class="form-control form-control-color" type="color" value="@Model.Company.PrimaryColor" onchange="this.previousElementSibling.value=this.value"></div></div><div class="col-md-6"><label class="form-label">رنگ دوم</label><div class="input-group"><input class="form-control" name="SecondaryColor" value="@Model.Company.SecondaryColor" pattern="^#[0-9a-fA-F]{6}$"><input class="form-control form-control-color" type="color" value="@Model.Company.SecondaryColor" onchange="this.previousElementSibling.value=this.value"></div></div>
-<div class="col-lg-6"><label class="form-label">لوگوی شرکت</label><input class="form-control" type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml"><div class="form-hint">PNG/JPG/WebP/SVG، حداکثر ۲ مگابایت.</div>@if(Model.Company.LogoBytes?.Length>0){<label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="removeLogo" value="true"> حذف لوگوی فعلی</label>}</div>
-<div class="col-lg-6"><label class="form-label">Favicon</label><input class="form-control" type="file" name="favicon" accept="image/png,image/x-icon,image/svg+xml"><div class="form-hint">حداکثر ۱ مگابایت.</div>@if(Model.Company.FaviconBytes?.Length>0){<label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="removeFavicon" value="true"> حذف favicon فعلی</label>}</div>
-</div><div class="info-box mt-3">نام شرکت و لوگو در سربرگ، صفحه ورود و سایر بخش‌هایی که از تنظیمات برند استفاده می‌کنند بارگذاری می‌شوند. برای تغییر هویت سامانه نیازی به تغییر کد برنامه نیست.</div><div class="step-actions"><span class="subtle">آخرین بروزرسانی: @Model.Company.UpdatedAt.ToLocalTime()</span><button class="btn btn-main btn-lg">ذخیره تنظیمات شرکت و برنامه</button></div></form></div>
+<div class="base-data-tabs">
+  <ul class="nav nav-tabs" role="tablist">
+    @foreach(var g in Model.Groups){var active=Model.Tab!="company"&&g==Model.Group;<li class="nav-item" role="presentation"><button class="nav-link @(active?"active":"")" data-bs-toggle="tab" data-bs-target="#lookup-pane-@g.ToLowerInvariant()" type="button" role="tab">@((groupTitles.TryGetValue(g,out var title))?title:g)</button></li>}
+    <li class="nav-item" role="presentation"><button class="nav-link @(Model.Tab=="company"?"active":"")" data-bs-toggle="tab" data-bs-target="#company-pane" type="button" role="tab">تنظیمات شرکت و برنامه</button></li>
+  </ul>
+
+  <div class="tab-content">
+    @foreach(var g in Model.Groups){
+      var active=Model.Tab!="company"&&g==Model.Group;
+      <div class="tab-pane fade @(active?"show active":"")" id="lookup-pane-@g.ToLowerInvariant()" role="tabpanel">
+        <div class="table-panel mt-3">
+          <div class="panel-title"><div><h4>@((groupTitles.TryGetValue(g,out var title2))?title2:g)</h4><span>آیتم‌های این بخش قابل افزودن، ویرایش، فعال/غیرفعال‌سازی و مرتب‌سازی هستند.</span></div><span class="mini-label">@g</span></div>
+          <div class="form-panel mb-3">
+            <form method="post" action="/Setup/AddLookup" class="row g-2">@Html.AntiForgeryToken()
+              <input type="hidden" name="groupCode" value="@g">
+              <div class="col-md-3"><label class="form-label">کد</label><input class="form-control" name="code" required></div>
+              <div class="col-md-5"><label class="form-label">عنوان</label><input class="form-control" name="title" required></div>
+              <div class="col-md-2"><label class="form-label">ترتیب</label><input class="form-control" type="number" name="sortOrder" value="1" min="1"></div>
+              <div class="col-md-2 d-flex align-items-end"><button class="btn btn-main w-100">افزودن آیتم</button></div>
+            </form>
+          </div>
+          <div class="toolbar"><input class="form-control" data-table-filter="#lookups-@g.ToLowerInvariant()" placeholder="جست‌وجوی کد یا عنوان..."></div>
+          <div class="table-responsive"><table id="lookups-@g.ToLowerInvariant()" class="table modern-table">
+            <thead><tr><th>کد</th><th>عنوان</th><th>ترتیب</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+            <tbody>
+            @foreach(var x in Model.Rows[g]){
+              <tr><td>@x.Code</td><td class="fw-bold">@x.Title</td><td>@x.SortOrder</td><td>@(x.IsActive?"فعال":"غیرفعال")</td><td>
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#lookup-@x.Id">ویرایش</button>
+                <form method="post" action="/Setup/ToggleLookup" class="d-inline">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@x.Id"><input type="hidden" name="group" value="@g"><button class="btn btn-sm btn-outline-secondary">@(x.IsActive?"غیرفعال":"فعال")</button></form>
+              </td></tr>
+              <tr class="collapse" id="lookup-@x.Id"><td colspan="5"><form method="post" action="/Setup/EditLookup" class="row g-2 align-items-end">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@x.Id"><input type="hidden" name="group" value="@g">
+                <div class="col-md-3"><label class="form-label">کد</label><input class="form-control" name="code" value="@x.Code" required></div>
+                <div class="col-md-4"><label class="form-label">عنوان</label><input class="form-control" name="title" value="@x.Title" required></div>
+                <div class="col-md-2"><label class="form-label">ترتیب</label><input class="form-control" type="number" name="sortOrder" value="@x.SortOrder" min="1"></div>
+                <div class="col-md-1"><label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" checked="@x.IsActive"> فعال</label></div>
+                <div class="col-md-2"><button class="btn btn-main w-100">ذخیره ویرایش</button></div>
+              </form></td></tr>
+            }
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    }
+
+    <div class="tab-pane fade @(Model.Tab=="company"?"show active":"")" id="company-pane" role="tabpanel">
+      <div class="form-panel mt-3">
+        <div class="panel-title"><div><h4>تنظیمات شرکت و برنامه</h4><span>نام، لوگو، شعار، اطلاعات تماس، رنگ‌بندی و متن‌های عمومی سامانه را یک‌جا تنظیم کنید.</span></div>
+          <div class="company-settings-preview">@if(Model.Company.LogoBytes?.Length>0){<img src="/Brand/Logo?v=@Model.Company.UpdatedAt.Ticks" alt="لوگو">}else{<div class="company-logo-placeholder">IS</div>}<div><strong>@Model.Company.CompanyName</strong><small>@Model.Company.SystemName</small></div></div>
+        </div>
+        <form method="post" action="/Setup/SaveCompanySettings" enctype="multipart/form-data">@Html.AntiForgeryToken()
+          <div class="row g-3">
+            <div class="col-lg-4"><label class="form-label">نام کامل شرکت</label><input class="form-control" name="CompanyName" value="@Model.Company.CompanyName" required></div>
+            <div class="col-lg-2"><label class="form-label">نام کوتاه</label><input class="form-control" name="ShortName" value="@Model.Company.ShortName"></div>
+            <div class="col-lg-6"><label class="form-label">نام سامانه</label><input class="form-control" name="SystemName" value="@Model.Company.SystemName" required></div>
+            <div class="col-lg-6"><label class="form-label">شعار</label><input class="form-control" name="Slogan" value="@Model.Company.Slogan"></div>
+            <div class="col-lg-3"><label class="form-label">وب‌سایت</label><input class="form-control" name="Website" value="@Model.Company.Website"></div>
+            <div class="col-lg-3"><label class="form-label">تلفن</label><input class="form-control" name="Phone" value="@Model.Company.Phone"></div>
+            <div class="col-lg-4"><label class="form-label">ایمیل</label><input class="form-control" type="email" name="Email" value="@Model.Company.Email"></div>
+            <div class="col-lg-4"><label class="form-label">شناسه ملی</label><input class="form-control" name="NationalId" value="@Model.Company.NationalId"></div>
+            <div class="col-lg-4"><label class="form-label">کد اقتصادی</label><input class="form-control" name="EconomicCode" value="@Model.Company.EconomicCode"></div>
+            <div class="col-12"><label class="form-label">نشانی</label><textarea class="form-control" name="Address" rows="2">@Model.Company.Address</textarea></div>
+            <div class="col-12"><label class="form-label">متن پایین صفحات</label><textarea class="form-control" name="FooterText" rows="2">@Model.Company.FooterText</textarea></div>
+            <div class="col-md-6"><label class="form-label">رنگ اصلی</label><div class="input-group"><input class="form-control" name="PrimaryColor" value="@Model.Company.PrimaryColor" pattern="^#[0-9a-fA-F]{6}$"><input class="form-control form-control-color" type="color" value="@Model.Company.PrimaryColor" onchange="this.previousElementSibling.value=this.value"></div></div>
+            <div class="col-md-6"><label class="form-label">رنگ دوم</label><div class="input-group"><input class="form-control" name="SecondaryColor" value="@Model.Company.SecondaryColor" pattern="^#[0-9a-fA-F]{6}$"><input class="form-control form-control-color" type="color" value="@Model.Company.SecondaryColor" onchange="this.previousElementSibling.value=this.value"></div></div>
+            <div class="col-lg-6"><label class="form-label">لوگوی شرکت</label><input class="form-control" type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml"><div class="form-hint">PNG/JPG/WebP/SVG، حداکثر ۲ مگابایت.</div>@if(Model.Company.LogoBytes?.Length>0){<label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="removeLogo" value="true"> حذف لوگوی فعلی</label>}</div>
+            <div class="col-lg-6"><label class="form-label">Favicon</label><input class="form-control" type="file" name="favicon" accept="image/png,image/x-icon,image/svg+xml"><div class="form-hint">حداکثر ۱ مگابایت.</div>@if(Model.Company.FaviconBytes?.Length>0){<label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="removeFavicon" value="true"> حذف favicon فعلی</label>}</div>
+          </div>
+          <div class="info-box mt-3">نام شرکت و لوگو در سربرگ، صفحه ورود و سایر بخش‌هایی که از تنظیمات برند استفاده می‌کنند بارگذاری می‌شوند. برای تغییر هویت سامانه نیازی به تغییر کد برنامه نیست.</div>
+          <div class="step-actions"><span class="subtle">آخرین بروزرسانی: @Model.Company.UpdatedAt.ToLocalTime()</span><button class="btn btn-main btn-lg">ذخیره تنظیمات شرکت و برنامه</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
