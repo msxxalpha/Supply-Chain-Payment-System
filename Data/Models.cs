@@ -3,7 +3,7 @@ public class CompanySettings{public int Id{get;set;}=1;public string CompanyName
 public class AppUser{public int Id{get;set;}public string UserName{get;set;}="";public string DisplayName{get;set;}="";public bool IsAdmin{get;set;}public bool IsActive{get;set;}=true;public string PasswordHash{get;set;}="";}
 public class LookupValue{public int Id{get;set;}public string GroupCode{get;set;}="";public string Code{get;set;}="";public string Title{get;set;}="";public int SortOrder{get;set;}=1;public bool IsActive{get;set;}=true;}
 public class Part{public int Id{get;set;}public string Code{get;set;}="";public string Title{get;set;}="";public int TypeId{get;set;}public bool IsActive{get;set;}=true;public LookupValue? Type{get;set;}}
-public class Supplier{public int Id{get;set;}public string Code{get;set;}="";public string Title{get;set;}="";public bool IsActive{get;set;}=true;public List<SupplierActivity> Activities{get;set;}=[];}
+public class Supplier{public int Id{get;set;}public string Code{get;set;}="";public string Title{get;set;}="";public decimal InitialClaimAmount{get;set;}=0m;public bool IsActive{get;set;}=true;public List<SupplierActivity> Activities{get;set;}=[];}
 public class SupplierActivity{public int SupplierId{get;set;}public int ActivityId{get;set;}public Supplier? Supplier{get;set;}public LookupValue? Activity{get;set;}}
 public class SupplierPart{public int Id{get;set;}public int SupplierId{get;set;}public int PartId{get;set;}public decimal SupplyCapacity{get;set;}public int ContractSettlementDays{get;set;}public bool IsActive{get;set;}=true;public Supplier? Supplier{get;set;}public Part? Part{get;set;}}
 public enum PaymentParameterType{Financial=1,Time=2,Part=3,Supplier=4}
