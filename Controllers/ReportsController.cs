@@ -16,7 +16,6 @@ public class ReportsController(AppDbContext db):Controller
    .OrderBy(x=>x.PaymentRunId).ToListAsync();
 
   var latestByKey=approved.GroupBy(x=>x.PaymentKeyHash).Select(g=>g.Last()).ToList();
-  var supplierFacts=approved.GroupBy(x=>new{x.SupplierId,x.SupplierTitle}).ToDictionary(g=>g.Key,new{Paid=g.Sum(x=>x.AllocatedAmount),LastRunPaid=g.Where(x=>x.PaymentRunId==approved.Where(a=>a.SupplierId==g.Key.SupplierId).Select(a=>a.PaymentRunId).DefaultIfEmpty(0).Max()).Sum(x=>x.AllocatedAmount)});
   var suppliers=new List<SupplierRow>();
   foreach(var sm in suppliersMaster){
    var hist=approved.Where(x=>x.SupplierId==sm.Id).ToList();
