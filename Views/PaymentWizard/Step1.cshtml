@@ -1,13 +1,31 @@
 @model Indamin.Payment.Data.PaymentWizardState
-@{ViewData["Title"]="گام اول؛ تعریف محاسبه";}
+@using System.Globalization
+@{
+ ViewData["Title"]="گام اول؛ تعریف محاسبه";
+ var budgetValue=Model.TotalAllocationBudget.ToString("0.##",CultureInfo.InvariantCulture);
+ var budgetDisplay=Model.TotalAllocationBudget.ToString("N0",CultureInfo.InvariantCulture);
+}
 <div class="wizard-steps"><div class="wizard-step active"><span class="num">۱</span><div><b>تنظیمات محاسبه</b><small>تاریخ، بازه و بودجه</small></div></div><div class="wizard-step"><span class="num">۲</span><div><b>جذب و محاسبه</b><small>Excel، امتیاز و تخصیص</small></div></div><div class="wizard-step"><span class="num">۳</span><div><b>تجمیع و تایید</b><small>خلاصه تامین‌کنندگان</small></div></div></div>
 <div class="page-header"><div><div class="eyebrow">ویزارد تخصیص پرداخت</div><h2>تعریف دوره محاسبه</h2><p class="text-muted">اطلاعات اولیه این نوبت پرداخت را ثبت کنید. تاریخ‌ها با تقویم شمسی هستند.</p></div></div>
-<form method="post" class="form-panel">
+<form method="post" class="form-panel" id="step1Form">
 @Html.AntiForgeryToken()
-<div class="row g-3"><div class="col-lg-6"><label class="form-label">عنوان محاسبه</label><input class="form-control" name="Title" value="@Model.Title" required></div><div class="col-lg-3"><label class="form-label">مبلغ کل قابل تخصیص</label><input class="form-control" type="number" min="0" step="0.01" name="TotalAllocationBudget" value="@Model.TotalAllocationBudget" required></div><div class="col-lg-3"><label class="form-label">واحد مبلغ</label><input class="form-control" name="AmountUnit" value="@Model.AmountUnit"></div>
+<div class="row g-3"><div class="col-lg-6"><label class="form-label">عنوان محاسبه</label><input class="form-control" name="Title" value="@Model.Title" required></div><div class="col-lg-3"><label class="form-label">مبلغ کل قابل تخصیص</label><input class="form-control" type="text" inputmode="decimal" id="totalAllocationBudgetDisplay" value="@budgetDisplay" autocomplete="off" required><input type="hidden" id="TotalAllocationBudget" name="TotalAllocationBudget" value="@budgetValue"><div id="totalAllocationBudgetWords" class="amount-words mt-2"></div></div><div class="col-lg-3"><label class="form-label">واحد مبلغ</label><input class="form-control" name="AmountUnit" value="@Model.AmountUnit"></div>
 <div class="col-lg-4"><label class="form-label">تاریخ محاسبه</label><div class="jalali-input"><input type="text" class="form-control" data-jalali-date autocomplete="off" name="CalculationDateJalali" value="@Model.CalculationDateJalali" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
 <div class="col-lg-4"><label class="form-label">از تاریخ رسید</label><div class="jalali-input"><input type="text" class="form-control" data-jalali-date autocomplete="off" name="PeriodFromJalali" value="@Model.PeriodFromJalali" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
 <div class="col-lg-4"><label class="form-label">تا تاریخ رسید</label><div class="jalali-input"><input type="text" class="form-control" data-jalali-date autocomplete="off" name="PeriodToJalali" value="@Model.PeriodToJalali" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
 <div class="col-12"><label class="form-label">توضیحات</label><textarea class="form-control" name="Notes" rows="3">@Model.Notes</textarea></div></div>
-<div class="info-box mt-3"><b>منطق تخصیص:</b> ابتدا امتیاز وزنی هر رسید از مجموع «امتیاز × وزن ÷ ۱۰۰» به‌دست می‌آید. سپس بودجه بین رسیدهای دارای مانده بدهی متناسب با امتیاز وزنی توزیع و حداکثر تا سقف مانده همان رسید تخصیص داده می‌شود؛ در نتیجه مجموع تخصیص از بودجه و از مانده بدهی بیشتر نخواهد شد.</div>
+<div class="info-box mt-3"><b>منطق تخصیص:</b> ابتدا امتیاز وزنی هر رسید از مجموع «امتیاز × وزن ÷ ۱۰۰» به‌دست می‌آید. امتیاز پارامتر «مبلغ بدهی» در سطح تامین‌کننده محاسبه می‌شود؛ یعنی مجموع مانده بدهی همه رسیدهای هر تامین‌کننده نسبت به کل مانده بدهی جذب‌شده محاسبه و بر اساس محدوده‌های تعیین‌شده، یک امتیاز مشترک برای رسیدهای همان تامین‌کننده ایجاد می‌شود. سپس بودجه بین رسیدهای دارای مانده بدهی متناسب با امتیاز وزنی توزیع می‌شود و سقف مانده بدهی هر رسید رعایت خواهد شد.</div>
 <div class="step-actions"><span class="subtle">اطلاعات در نشست موقت کاربر نگهداری می‌شود تا مرحله تایید.</span><button class="btn btn-main btn-lg">ادامه به جذب Excel ←</button></div></form>
+<script>
+(function(){
+ const display=document.getElementById('totalAllocationBudgetDisplay'),hidden=document.getElementById('TotalAllocationBudget'),words=document.getElementById('totalAllocationBudgetWords'),unit=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.AmountUnit??"ریال"));
+ const ones=['','یک','دو','سه','چهار','پنج','شش','هفت','هشت','نه'],teens=['ده','یازده','دوازده','سیزده','چهارده','پانزده','شانزده','هفده','هجده','نوزده'],tens=['','','بیست','سی','چهل','پنجاه','شصت','هفتاد','هشتاد','نود'],hundreds=['','صد','دویست','سیصد','چهارصد','پانصد','ششصد','هفتصد','هشتصد','نهصد'],scales=['','هزار','میلیون','میلیارد','تریلیون','کوادریلیون'];
+ function three(n){let p=[];if(Math.floor(n/100)>0)p.push(hundreds[Math.floor(n/100)]);n%=100;if(n>=10&&n<=19)p.push(teens[n-10]);else{if(Math.floor(n/10)>0)p.push(tens[Math.floor(n/10)]);if(n%10)p.push(ones[n%10]);}return p.join(' و ');}
+ function toWords(n){if(n===0)return 'صفر';let p=[],i=0;while(n>0&&i<scales.length){let g=n%1000;if(g)p.unshift(three(g)+(scales[i]?' '+scales[i]:''));n=Math.floor(n/1000);i++;}return p.join(' و ');}
+ function norm(s){return(s||'').replace(/[۰-۹]/g,c=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c))).replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))).replace(/٬/g,'').replace(/,/g,'').replace(/٫/g,'.').replace(/\s/g,'');}
+ function value(){const s=norm(display.value).replace(/[^0-9.\-]/g,'');const n=Number(s);return Number.isFinite(n)&&n>=0?n:0;}
+ function refresh(){const n=value(),i=Math.floor(n),fraction=Math.round((n-i)*100);hidden.value=n.toString();let t=toWords(i);if(fraction)t+=' ممیز '+toWords(fraction)+' صدم';words.textContent='به حروف: '+t+(unit?' '+unit:'');}
+ function format(){display.value=new Intl.NumberFormat('fa-IR',{maximumFractionDigits:2}).format(value());refresh();}
+ display.addEventListener('input',refresh);display.addEventListener('focus',()=>{display.value=norm(display.value);display.setSelectionRange(display.value.length,display.value.length);});display.addEventListener('blur',format);document.getElementById('step1Form').addEventListener('submit',format);format();
+})();
+</script>
