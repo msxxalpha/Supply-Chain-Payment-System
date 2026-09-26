@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Indamin.Payment.Controllers;
 
-[Authorize]
+[Authorize(Policy=SecurityPermissions.ReportsView)]
 public class ReportsController(AppDbContext db):Controller
 {
  public async Task<IActionResult> Index()
@@ -42,8 +42,8 @@ public class ReportsController(AppDbContext db):Controller
   suppliers=suppliers.Select(x=>x with{Priority=PriorityScore(x.Remaining,maxRemainingSupplier,x.AgeRatio,x.Coverage,x.Overdue,x.Count)}).ToList();
   parts=parts.Select(x=>x with{Priority=PriorityScore(x.Remaining,maxRemainingPart,x.AgeRatio,x.Coverage,x.Overdue,x.Count)}).ToList();
 
-  var recent=runs.Where(x=>x.Status==PaymentRunStatus.Approved).Take(8).Select(x=>new RunRow(x.Id,x.Title,x.CalculationDateJalali,x.ImportedDebt,x.TotalAllocationBudget,x.Invoices.Count,x.Invoices.Sum(i=>i.AllocatedAmount))).ToList();
-  var trend=runs.Where(x=>x.Status==PaymentRunStatus.Approved).OrderBy(x=>x.Id).TakeLast(12).Select(x=>new TrendRow(x.CalculationDateJalali,x.TotalAllocationBudget,x.Invoices.Sum(i=>i.AllocatedAmount))).ToList();
+  var recent=activeRuns.Where(x=>x.Status==PaymentRunStatus.Approved||x.Status==PaymentRunStatus.PaymentOrdered).Take(8).Select(x=>new RunRow(x.Id,x.Title,x.CalculationDateJalali,x.ImportedDebt,x.TotalAllocationBudget,x.Invoices.Count,x.Invoices.Sum(i=>i.AllocatedAmount))).ToList();
+  var trend=activeRuns.Where(x=>x.Status==PaymentRunStatus.Approved||x.Status==PaymentRunStatus.PaymentOrdered).OrderBy(x=>x.Id).TakeLast(12).Select(x=>new TrendRow(x.CalculationDateJalali,x.TotalAllocationBudget,x.Invoices.Sum(i=>i.AllocatedAmount))).ToList();
   var activeRuns=runs.Where(x=>!x.IsDeleted).ToList();var status=activeRuns.GroupBy(x=>x.Status).ToDictionary(g=>g.Key,g=>g.Count());
   return View(new ReportsVm(activeRuns.Count,activeRuns.Count(x=>x.Status==PaymentRunStatus.Approved||x.Status==PaymentRunStatus.PaymentOrdered),activeRuns.Count(x=>x.Status==PaymentRunStatus.Cancelled),latestByKey.Count,original,allocated,remaining,original>0?allocated/original:0,suppliers,parts,supplierParts,status,trend,recent));
  }
