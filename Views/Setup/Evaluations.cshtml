@@ -1,6 +1,26 @@
 @model Indamin.Payment.Controllers.SetupController.EvaluationsVm
 @using Indamin.Payment.Data
 @{ViewData["Title"]="ارزیابی قطعه–تامین‌کننده";}
-<div class="page-header"><div><div class="eyebrow">اطلاعات پایه</div><h2>ارزیابی پارامترهای قطعه–تامین‌کننده</h2><p class="text-muted">امتیاز پارامترهای نوع قطعه و تامین‌کننده بین ۱ تا ۵ ثبت می‌شود و در ویزارد پرداخت به‌صورت خودکار استفاده خواهد شد.</p></div></div>
-<div class="info-box mb-3">پارامترهای «سن بدهی موثر» و «مبلغ بدهی» خودکار هستند و در این صفحه قابل ورود دستی نیستند. امتیازهای دستی در بانک اطلاعاتی نگهداری می‌شوند تا در هر بار محاسبه مجدداً استفاده شوند.</div>
-<div class="table-panel"><div class="toolbar"><input class="form-control" data-table-filter="#evals" placeholder="جست‌وجوی تامین‌کننده، کد قطعه یا عنوان قطعه..."></div><div class="table-responsive"><table id="evals" class="table modern-table"><thead><tr><th>تامین‌کننده</th><th>قطعه</th>@foreach(var p in Model.Parameters){<th class="text-center">@p.Title<br><span class="subtle">وزن @p.Weight٪</span></th>}</tr></thead><tbody>@foreach(var m in Model.Mappings){<tr><td class="fw-bold">@m.Supplier?.Title</td><td>@m.Part?.Code - @m.Part?.Title</td>@foreach(var p in Model.Parameters){var sc=Model.Scores.FirstOrDefault(x=>x.SupplierPartId==m.Id&&x.PaymentParameterId==p.Id);<td class="score-cell"><form method="post" action="/Setup/SaveEvaluation" class="d-flex gap-1 align-items-center">@Html.AntiForgeryToken()<input type="hidden" name="supplierPartId" value="@m.Id"><input type="hidden" name="parameterId" value="@p.Id"><input class="form-control score-select" type="number" min="1" max="5" step="0.1" name="score" value="@(sc?.Score.ToString("0.##")??"")" placeholder="—" required><button class="btn btn-sm btn-outline-primary">✓</button></form></td>}</tr>}</tbody></table></div></div>
+<div class="page-header">
+  <div><div class="eyebrow">اطلاعات پایه</div><h2>ارزیابی پارامترهای قطعه–تامین‌کننده</h2><p class="text-muted">با تعریف هر ارتباط قطعه–تامین‌کننده، پارامترهای دستی فعال به‌صورت خودکار با امتیاز پیش‌فرض ۱ ایجاد می‌شوند.</p></div>
+  <div class="export-group"><a class="btn btn-outline-primary" href="/Setup/ExportEvaluations">خروجی Excel</a></div>
+</div>
+<div class="info-box mb-3">پارامترهای «سن بدهی موثر» و «مبلغ بدهی» خودکار هستند و در این صفحه قابل ورود دستی نیستند. برای هر ارتباط فقط یک دکمه در انتهای ردیف برای ثبت همه امتیازهای پارامترها وجود دارد.</div>
+<div class="table-panel">
+  <div class="toolbar"><input class="form-control" data-table-filter="#evals" placeholder="جست‌وجوی تامین‌کننده، کد قطعه یا عنوان قطعه..."></div>
+  <div class="table-responsive"><table id="evals" class="table modern-table">
+    <thead><tr><th>تامین‌کننده</th><th>قطعه</th>@foreach(var p in Model.Parameters){<th class="text-center">@p.Title<br><span class="subtle">وزن @p.Weight٪</span></th>}<th>عملیات</th></tr></thead>
+    <tbody>
+    @foreach(var m in Model.Mappings){
+      <tr>
+        <td class="fw-bold">@m.Supplier?.Title</td><td>@m.Part?.Code - @m.Part?.Title</td>
+        <form method="post" action="/Setup/SaveEvaluations">@Html.AntiForgeryToken()<input type="hidden" name="supplierPartId" value="@m.Id">
+        @foreach(var p in Model.Parameters){var sc=Model.Scores.FirstOrDefault(x=>x.SupplierPartId==m.Id&&x.PaymentParameterId==p.Id);<td class="score-cell"><input class="form-control score-select" type="number" min="1" max="@p.MaxScore" step="0.1" name="items[@Model.Parameters.IndexOf(p)].Score" value="@(sc?.Score.ToString("0.##")??"1")" required><input type="hidden" name="items[@Model.Parameters.IndexOf(p)].ParameterId" value="@p.Id"></td>}
+        <td class="text-nowrap"><button class="btn btn-sm btn-main">ثبت همه امتیازها</button></form>
+          <form method="post" action="/Setup/ToggleEvaluationSet" class="d-inline">@Html.AntiForgeryToken()<input type="hidden" name="supplierPartId" value="@m.Id"><button class="btn btn-sm btn-outline-secondary">@(Model.Scores.Where(x=>x.SupplierPartId==m.Id).Any(x=>x.IsActive)?"غیرفعال‌سازی":"فعال‌سازی")</button></form>
+        </td>
+      </tr>
+    }
+    </tbody>
+  </table></div>
+</div>
