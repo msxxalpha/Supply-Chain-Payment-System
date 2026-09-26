@@ -1,36 +1,140 @@
 @model Indamin.Payment.Controllers.UsersController.UsersVm
 @{ViewData["Title"]="مدیریت کاربران، نقش‌ها و دسترسی‌ها";}
-<div class="page-header"><div><div class="eyebrow">امنیت سامانه</div><h2>مدیریت کاربران، نقش‌ها و سطح دسترسی</h2><p class="text-muted">دسترسی عملیاتی کاربران از طریق نقش‌ها تعیین می‌شود. تغییر دسترسی پس از ورود مجدد کاربر اعمال خواهد شد.</p></div></div>
+<div class="page-header">
+ <div><div class="eyebrow">امنیت سامانه</div><h2>مدیریت کاربران، نقش‌ها و سطح دسترسی</h2><p class="text-muted">دسترسی‌ها به صورت نقش‌محور تعریف می‌شوند و مجوز هر کارکرد اصلی سامانه قابل کنترل است.</p></div>
+</div>
 <div class="base-data-tabs">
-<ul class="nav nav-tabs" role="tablist"><li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#users-pane" type="button">کاربران</button></li><li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#roles-pane" type="button">نقش‌ها و دسترسی‌ها</button></li></ul>
-<div class="tab-content">
-<div class="tab-pane fade show active" id="users-pane">
-<div class="form-panel mt-3"><div class="panel-title"><div><h4>ایجاد کاربر جدید</h4><span>برای کاربر جدید تعیین حداقل یک نقش یا وضعیت مدیر سامانه را مشخص کنید.</span></div></div>
-<form method="post" action="/Users/SaveUser" class="row g-2">@Html.AntiForgeryToken()
-<div class="col-lg-3"><label class="form-label">نام کاربری</label><input class="form-control" name="userName" required></div>
-<div class="col-lg-3"><label class="form-label">نام نمایشی</label><input class="form-control" name="displayName" required></div>
-<div class="col-lg-3"><label class="form-label">رمز عبور</label><input class="form-control" type="password" name="password" autocomplete="new-password" required></div>
-<div class="col-lg-3"><label class="form-label">نقش‌ها</label><select class="form-select" name="roleIds" multiple size="2">@foreach(var role in Model.Roles.Where(x=>x.IsActive)){<option value="@role.Id">@role.Title</option>}</select></div>
-<div class="col-12 d-flex align-items-center gap-4"><label class="form-check"><input class="form-check-input" type="checkbox" name="isAdmin" value="true"> مدیر سامانه</label><label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" checked> فعال</label><button class="btn btn-main">ثبت کاربر</button></div>
-</form></div>
-<div class="table-panel mt-3"><div class="toolbar"><input class="form-control" data-table-filter="#users" placeholder="جست‌وجوی نام کاربری، نام یا نقش..."></div>
-<div class="table-responsive"><table id="users" class="table modern-table"><thead><tr><th>نام کاربری</th><th>نام نمایشی</th><th>نقش‌ها</th><th>مدیر سامانه</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>
-@foreach(var u in Model.Users){<tr><td class="fw-bold">@u.UserName</td><td>@u.DisplayName</td><td>@(u.RoleTitles.Count==0?"بدون نقش":string.Join("، ",u.RoleTitles))</td><td>@(u.IsAdmin?"بله":"خیر")</td><td>@(u.IsActive?"فعال":"غیرفعال")</td><td><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#user-@u.Id">ویرایش</button></td></tr>
-<tr class="collapse" id="user-@u.Id"><td colspan="6"><form method="post" action="/Users/SaveUser" class="row g-2">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@u.Id">
-<div class="col-md-3"><label class="form-label">نام کاربری</label><input class="form-control" name="userName" value="@u.UserName" required></div><div class="col-md-3"><label class="form-label">نام نمایشی</label><input class="form-control" name="displayName" value="@u.DisplayName" required></div><div class="col-md-3"><label class="form-label">رمز جدید</label><input class="form-control" type="password" name="password" autocomplete="new-password" placeholder="در صورت نیاز تغییر دهید"></div><div class="col-md-3"><label class="form-label">نقش‌ها</label><select class="form-select" name="roleIds" multiple size="3">@foreach(var role in Model.Roles){<option value="@role.Id" selected="@(u.RoleIds.Contains(role.Id))">@role.Title</option>}</select></div>
-<div class="col-12 d-flex align-items-center gap-4"><label class="form-check"><input class="form-check-input" type="checkbox" name="isAdmin" value="true" checked="@u.IsAdmin"> مدیر سامانه</label><label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" checked="@u.IsActive"> فعال</label><button class="btn btn-main btn-sm">ذخیره کاربر</button></div></form></td></tr>}
-</tbody></table></div></div>
+ <ul class="nav nav-tabs" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#users-pane" type="button">کاربران</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#roles-pane" type="button">نقش‌ها و دسترسی‌ها</button></li>
+ </ul>
+ <div class="tab-content">
+  <div class="tab-pane fade show active" id="users-pane">
+   <div class="form-panel mt-3">
+    <div class="panel-title"><div><h4>ایجاد کاربر جدید</h4><span>رمز عبور برای کاربر جدید الزامی است.</span></div></div>
+    <form method="post" action="/Users/SaveUser" class="row g-3">
+     @Html.AntiForgeryToken()
+     <div class="col-lg-3"><label class="form-label">نام کاربری</label><input class="form-control" name="userName" required></div>
+     <div class="col-lg-3"><label class="form-label">نام نمایشی</label><input class="form-control" name="displayName" required></div>
+     <div class="col-lg-3"><label class="form-label">رمز عبور</label><input class="form-control" type="password" name="password" autocomplete="new-password" required></div>
+     <div class="col-lg-3"><label class="form-label">نقش‌ها</label><select class="form-select" name="roleIds" multiple size="3">
+      @foreach(var role in Model.Roles.Where(x=>x.IsActive)){<option value="@role.Id">@role.Title</option>}
+     </select></div>
+     <div class="col-12 d-flex align-items-center gap-4">
+      <label class="form-check"><input class="form-check-input" type="checkbox" name="isAdmin" value="true"> مدیر سامانه</label>
+      <label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" checked> فعال</label>
+      <button class="btn btn-main">ثبت کاربر</button>
+     </div>
+    </form>
+   </div>
+   <div class="table-panel mt-3">
+    <div class="toolbar"><input class="form-control" data-table-filter="#users" placeholder="جست‌وجوی نام کاربری، نام یا نقش..."></div>
+    <div class="table-responsive"><table id="users" class="table modern-table">
+     <thead><tr><th>نام کاربری</th><th>نام نمایشی</th><th>نقش‌ها</th><th>مدیر سامانه</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+     <tbody>
+      @foreach(var u in Model.Users)
+      {
+       <tr>
+        <td class="fw-bold">@u.UserName</td><td>@u.DisplayName</td><td>@(u.RoleTitles.Count==0?"بدون نقش":string.Join("، ",u.RoleTitles))</td><td>@(u.IsAdmin?"بله":"خیر")</td><td>@(u.IsActive?"فعال":"غیرفعال")</td>
+        <td><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#user-edit-@u.Id">ویرایش</button></td>
+       </tr>
+       <tr class="collapse" id="user-edit-@u.Id">
+        <td colspan="6">
+         <form method="post" action="/Users/SaveUser" class="row g-3">
+          @Html.AntiForgeryToken()
+          <input type="hidden" name="id" value="@u.Id">
+          <div class="col-lg-3"><label class="form-label">نام کاربری</label><input class="form-control" name="userName" value="@u.UserName" required></div>
+          <div class="col-lg-3"><label class="form-label">نام نمایشی</label><input class="form-control" name="displayName" value="@u.DisplayName" required></div>
+          <div class="col-lg-3"><label class="form-label">رمز جدید</label><input class="form-control" type="password" name="password" autocomplete="new-password" placeholder="بدون تغییر، خالی بگذارید"></div>
+          <div class="col-lg-3"><label class="form-label">نقش‌ها</label><select class="form-select" name="roleIds" multiple size="3">
+           @foreach(var role in Model.Roles)
+           {
+            if(u.RoleIds.Contains(role.Id)){<option value="@role.Id" selected>@role.Title</option>}else{<option value="@role.Id">@role.Title</option>}
+           }
+          </select></div>
+          <div class="col-12 d-flex align-items-center gap-4">
+           <label class="form-check"><input class="form-check-input" type="checkbox" name="isAdmin" value="true" @(u.IsAdmin?"checked":"")> مدیر سامانه</label>
+           <label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" @(u.IsActive?"checked":"")> فعال</label>
+           <button class="btn btn-main btn-sm">ذخیره کاربر</button>
+          </div>
+         </form>
+        </td>
+       </tr>
+      }
+     </tbody>
+    </table></div>
+   </div>
+  </div>
+  <div class="tab-pane fade" id="roles-pane">
+   <div class="form-panel mt-3">
+    <div class="panel-title"><div><h4>ایجاد نقش جدید</h4><span>مجوزها برای کارکردهای اصلی سامانه تفکیک شده‌اند.</span></div></div>
+    <form method="post" action="/Users/SaveRole">
+     @Html.AntiForgeryToken()
+     <div class="row g-3">
+      <div class="col-md-3"><label class="form-label">کد نقش</label><input class="form-control" name="code" required></div>
+      <div class="col-md-4"><label class="form-label">عنوان نقش</label><input class="form-control" name="title" required></div>
+      <div class="col-md-2 d-flex align-items-end"><label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" checked> فعال</label></div>
+     </div>
+     <div class="permission-grid mt-3">
+      @foreach(var group in Model.Permissions.GroupBy(x=>x.GroupTitle))
+      {
+       <div class="permission-group"><h5>@group.Key</h5>
+        @foreach(var permission in group.OrderBy(x=>x.SortOrder))
+        {
+         <label class="permission-item"><input type="checkbox" name="permissionIds" value="@permission.Id"><span><b>@permission.Title</b><small>@permission.Code</small></span></label>
+        }
+       </div>
+      }
+     </div>
+     <button class="btn btn-main mt-3">ثبت نقش</button>
+    </form>
+   </div>
+   <div class="table-panel mt-3">
+    <div class="toolbar"><input class="form-control" data-table-filter="#roles" placeholder="جست‌وجوی کد یا عنوان نقش..."></div>
+    <div class="table-responsive"><table id="roles" class="table modern-table">
+     <thead><tr><th>کد</th><th>عنوان</th><th>نوع</th><th>وضعیت</th><th>تعداد دسترسی</th><th>عملیات</th></tr></thead>
+     <tbody>
+      @foreach(var role in Model.Roles)
+      {
+       var pids=Model.RolePermissionIds.GetValueOrDefault(role.Id,[]);
+       <tr><td class="fw-bold">@role.Code</td><td>@role.Title</td><td>@(role.IsSystem?"سیستمی":"سفارشی")</td><td>@(role.IsActive?"فعال":"غیرفعال")</td><td>@pids.Count</td><td><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#role-edit-@role.Id">ویرایش</button></td></tr>
+       <tr class="collapse" id="role-edit-@role.Id">
+        <td colspan="6">
+         <form method="post" action="/Users/SaveRole">
+          @Html.AntiForgeryToken()
+          <input type="hidden" name="id" value="@role.Id">
+          <div class="row g-3">
+           <div class="col-md-3"><label class="form-label">کد نقش</label><input class="form-control" name="code" value="@role.Code" @(role.IsSystem?"readonly":"")></div>
+           <div class="col-md-4"><label class="form-label">عنوان نقش</label><input class="form-control" name="title" value="@role.Title" required></div>
+           <div class="col-md-2 d-flex align-items-end">
+            @if(role.IsSystem)
+            {<input type="hidden" name="isActive" value="true"><span class="subtle">نقش سیستمی فعال است.</span>}
+            else
+            {<label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" @(role.IsActive?"checked":"")> فعال</label>}
+           </div>
+          </div>
+          <div class="permission-grid mt-3">
+           @foreach(var group in Model.Permissions.GroupBy(x=>x.GroupTitle))
+           {
+            <div class="permission-group"><h5>@group.Key</h5>
+             @foreach(var permission in group.OrderBy(x=>x.SortOrder))
+             {
+              <label class="permission-item"><input type="checkbox" name="permissionIds" value="@permission.Id" @(pids.Contains(permission.Id)?"checked":"")><span><b>@permission.Title</b><small>@permission.Code</small></span></label>
+             }
+            </div>
+           }
+          </div>
+          <button class="btn btn-main mt-3">ذخیره نقش</button>
+         </form>
+        </td>
+       </tr>
+      }
+     </tbody>
+    </table></div>
+   </div>
+  </div>
+ </div>
 </div>
-<div class="tab-pane fade" id="roles-pane">
-<div class="form-panel mt-3"><div class="panel-title"><div><h4>ایجاد نقش جدید</h4><span>دسترسی‌ها بر اساس کارکردهای اصلی سامانه تعریف شده‌اند.</span></div></div>
-<form method="post" action="/Users/SaveRole">@Html.AntiForgeryToken()<div class="row g-2"><div class="col-md-3"><label class="form-label">کد نقش</label><input class="form-control" name="code" required></div><div class="col-md-4"><label class="form-label">عنوان نقش</label><input class="form-control" name="title" required></div><div class="col-md-2 d-flex align-items-end"><label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" checked> فعال</label></div></div>
-<div class="permission-grid mt-3">@foreach(var group in Model.Permissions.GroupBy(x=>x.GroupTitle)){<div class="permission-group"><h5>@group.Key</h5>@foreach(var p in group.OrderBy(x=>x.SortOrder)){<label class="permission-item"><input type="checkbox" name="permissionIds" value="@p.Id"><span><b>@p.Title</b><small>@p.Code</small></span></label>}}</div></div><button class="btn btn-main mt-3">ثبت نقش و دسترسی‌ها</button></form></div>
-<div class="table-panel mt-3"><div class="toolbar"><input class="form-control" data-table-filter="#roles" placeholder="جست‌وجوی کد یا عنوان نقش..."></div><div class="table-responsive"><table id="roles" class="table modern-table"><thead><tr><th>کد</th><th>عنوان</th><th>نوع</th><th>وضعیت</th><th>دسترسی‌ها</th><th>عملیات</th></tr></thead><tbody>
-@foreach(var role in Model.Roles){var pids=Model.RolePermissionIds.GetValueOrDefault(role.Id,[]);<tr><td>@role.Code</td><td class="fw-bold">@role.Title</td><td>@(role.IsSystem?"سیستمی":"سفارشی")</td><td>@(role.IsActive?"فعال":"غیرفعال")</td><td>@pids.Count</td><td><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#role-@role.Id">ویرایش</button></td></tr>
-<tr class="collapse" id="role-@role.Id"><td colspan="6"><form method="post" action="/Users/SaveRole">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@role.Id"><div class="row g-2"><div class="col-md-3"><input class="form-control" name="code" value="@role.Code" @(role.IsSystem?"readonly":"")></div><div class="col-md-4"><input class="form-control" name="title" value="@role.Title" required></div><div class="col-md-2"><label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="isActive" value="true" checked="@role.IsActive" @(role.IsSystem?"disabled":"")> فعال</label>@if(role.IsSystem){<input type="hidden" name="isActive" value="true">}</div></div><div class="permission-grid mt-3">@foreach(var group in Model.Permissions.GroupBy(x=>x.GroupTitle)){<div class="permission-group"><h5>@group.Key</h5>@foreach(var p in group.OrderBy(x=>x.SortOrder)){<label class="permission-item"><input type="checkbox" name="permissionIds" value="@p.Id" checked="@pids.Contains(p.Id)"><span><b>@p.Title</b><small>@p.Code</small></span></label>}}</div></div><button class="btn btn-main mt-3">ذخیره نقش</button></form></td></tr>}
-</tbody></table></div></div>
-</div>
-</div></div>
 <style>
 .permission-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.permission-group{border:1px solid var(--line);border-radius:13px;background:#f9fbfc;padding:13px}.permission-group h5{font-size:11px;margin:0 0 9px}.permission-item{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-top:1px solid #edf1f4;font-size:10px}.permission-item:first-of-type{border-top:0}.permission-item input{margin-top:3px}.permission-item b{display:block;color:var(--navy)}.permission-item small{display:block;color:#92a1ad;font-size:8px;margin-top:2px;direction:ltr;text-align:right}
 @@media(max-width:800px){.permission-grid{grid-template-columns:1fr}}
