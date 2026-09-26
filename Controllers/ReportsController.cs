@@ -1,4 +1,5 @@
 using Indamin.Payment.Data;
+using Indamin.Payment.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
