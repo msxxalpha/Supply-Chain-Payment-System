@@ -1,27 +1,28 @@
 @model Indamin.Payment.Data.PaymentWizardState
 @using Indamin.Payment.Data
 @if(Model.ImportErrorGroups.Count>0){
-<div class="modal fade" id="importErrorsModal" tabindex="-1" aria-labelledby="importErrorsLabel" aria-hidden="true" data-show-on-load="true">
+<div class="modal fade" id="importErrorsModal" tabindex="-1" aria-labelledby="importErrorsLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
  <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
-  <div class="modal-content border-0 shadow-lg">
+  <div class="modal-content border-0 shadow-lg import-errors-modal">
    <div class="modal-header">
     <div>
-     <h5 class="modal-title" id="importErrorsLabel">خطاهای بارگذاری فایل Excel</h5>
-     <div class="subtle mt-1">فایل بارگذاری شد، اما برای ادامه محاسبه باید موارد زیر اصلاح شوند.</div>
+     <h5 class="modal-title" id="importErrorsLabel">نتیجه کنترل فایل Excel</h5>
+     <div class="subtle mt-1">همه خطاهای شناسایی‌شده در همین پنجره و بر اساس نوع خطا دسته‌بندی شده‌اند.</div>
     </div>
     <button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal" aria-label="بستن"></button>
    </div>
    <div class="modal-body">
-    <div class="alert alert-danger d-flex justify-content-between align-items-center gap-3">
-     <span><b>تعداد کل خطاها:</b> @Model.ImportErrorGroups.Sum(x=>x.Errors.Count)</span>
-     <span class="small">پس از اصلاح فایل، آن را مجدداً بارگذاری کنید.</span>
+    <div class="alert alert-danger d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+     <span><b>مجموع موارد قابل اصلاح:</b> @Model.ImportErrorGroups.Sum(x=>x.Errors.Count)</span>
+     <span class="small">پس از اصلاح موارد، فایل Excel را مجدداً بارگذاری کنید.</span>
     </div>
-    <ul class="nav nav-tabs mb-3" role="tablist">
+    <ul class="nav nav-tabs import-error-tabs mb-3" role="tablist">
      @for(var gi=0;gi<Model.ImportErrorGroups.Count;gi++){
       var g=Model.ImportErrorGroups[gi];
       <li class="nav-item" role="presentation">
-       <button class="nav-link @(gi==0?"active":"")" data-bs-toggle="tab" data-bs-target="#import-error-tab-@g.Key" type="button" role="tab">
-        @g.Title <span class="badge text-bg-danger ms-1">@g.Errors.Count</span>
+       <button class="nav-link @(gi==0?"active":"")" id="import-error-tab-button-@g.Key" data-bs-toggle="tab" data-bs-target="#import-error-tab-@g.Key" type="button" role="tab" aria-controls="import-error-tab-@g.Key" aria-selected="@(gi==0?"true":"false")">
+        <span>@g.Title</span>
+        <span class="badge text-bg-danger ms-1">@g.Errors.Count</span>
        </button>
       </li>
      }
@@ -29,9 +30,12 @@
     <div class="tab-content">
      @for(var gi=0;gi<Model.ImportErrorGroups.Count;gi++){
       var g=Model.ImportErrorGroups[gi];
-      <div class="tab-pane fade @(gi==0?"show active":"")" id="import-error-tab-@g.Key" role="tabpanel">
+      <div class="tab-pane fade @(gi==0?"show active":"")" id="import-error-tab-@g.Key" role="tabpanel" aria-labelledby="import-error-tab-button-@g.Key" tabindex="0">
        <div class="error-list-panel">
-        <div class="small text-muted mb-2">موارد نیازمند اصلاح: @g.Errors.Count</div>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+         <b>@g.Title</b>
+         <span class="badge rounded-pill text-bg-secondary">@g.Errors.Count مورد</span>
+        </div>
         <ol class="mb-0 pe-3">
          @foreach(var error in g.Errors){<li class="mb-2">@error</li>}
         </ol>
@@ -41,31 +45,33 @@
     </div>
    </div>
    <div class="modal-footer">
-    <button type="button" class="btn btn-main" data-bs-dismiss="modal">متوجه شدم</button>
+    <span class="subtle me-auto">هیچ خطایی به‌صورت پنجره جداگانه نمایش داده نمی‌شود.</span>
+    <button type="button" class="btn btn-main" data-bs-dismiss="modal">بستن و اصلاح فایل</button>
    </div>
   </div>
  </div>
 </div>
-}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    var modalElement = document.getElementById('importErrorsModal');
-    if (modalElement && modalElement.dataset.showOnLoad === 'true') {
-        if (window.bootstrap && bootstrap.Modal) {
-            bootstrap.Modal.getOrCreateInstance(modalElement).show();
-        } else {
-            modalElement.classList.add('show');
-            modalElement.style.display = 'block';
-            modalElement.removeAttribute('aria-hidden');
-            document.body.classList.add('modal-open');
-            var backdrop = document.createElement('div');
-            backdrop.className = 'modal-backdrop fade show';
-            backdrop.id = 'import-errors-fallback-backdrop';
-            document.body.appendChild(backdrop);
-        }
+    const modalElement = document.getElementById('importErrorsModal');
+    if (!modalElement) return;
+    if (window.bootstrap && bootstrap.Modal) {
+        bootstrap.Modal.getOrCreateInstance(modalElement).show();
+        return;
+    }
+    modalElement.classList.add('show');
+    modalElement.style.display = 'block';
+    modalElement.removeAttribute('aria-hidden');
+    document.body.classList.add('modal-open');
+    if (!document.getElementById('import-errors-fallback-backdrop')) {
+        const backdrop = document.createElement('div');
+        backdrop.className = 'modal-backdrop fade show';
+        backdrop.id = 'import-errors-fallback-backdrop';
+        document.body.appendChild(backdrop);
     }
 });
 </script>
+}
 @{ViewData["Title"]="گام دوم؛ جذب و محاسبه";var manual=Model.Parameters.Where(x=>x.ScoringMethod==ParameterScoringMethod.Manual).ToList();var idx=0;}
 <div class="wizard-steps"><div class="wizard-step done"><span class="num">✓</span><div><b>تنظیمات محاسبه</b><small>@Model.CalculationDateJalali</small></div></div><div class="wizard-step active"><span class="num">۲</span><div><b>جذب و محاسبه</b><small>Excel، امتیاز و تخصیص</small></div></div><div class="wizard-step"><span class="num">۳</span><div><b>تجمیع و تایید</b><small>خلاصه تامین‌کنندگان</small></div></div></div>
 <div class="page-header"><div><div class="eyebrow">محاسبه نوبت پرداخت</div><h2>@Model.Title</h2><p class="text-muted">بازه رسید: @Model.PeriodFromJalali تا @Model.PeriodToJalali — فایل فعلی: @(Model.SourceFileName??"هنوز بارگذاری نشده")</p></div><div class="export-group">@if(Model.Rows.Count>0){<a class="btn btn-outline-secondary" href="/PaymentWizard/ExportPreview">خروجی Excel محاسبه</a>}</div></div>
