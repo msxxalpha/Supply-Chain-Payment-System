@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Indamin.Payment.Data;
 using PuppeteerSharp;
+using PuppeteerSharp.Media;
 namespace Indamin.Payment.Services;
 public class PaymentOrderPdfService(IConfiguration configuration,IWebHostEnvironment environment){
  static readonly CultureInfo Fa=new("fa-IR");
