@@ -69,7 +69,7 @@
       <tr>
         <td class="fw-bold">@m.Supplier?.Code - @m.Supplier?.Title</td><td>@m.Part?.Code - @m.Part?.Title</td><td>@m.SupplyCapacity</td><td>@m.ContractSettlementDays روز</td><td>@(m.IsActive?"فعال":"غیرفعال")</td>
         <td><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#map-@m.Id">ویرایش</button>
-          <form method="post" action="/Setup/DeleteMapping" class="d-inline" data-confirm="این ارتباط حذف شود؟">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@m.Id"><button class="btn btn-sm btn-outline-secondary">حذف</button></form>
+          @if(Model.LockedIds.Contains(m.Id)){<span class="badge text-bg-light">استفاده‌شده در محاسبه تاییدشده؛ فقط غیرفعال</span>}else{<form method="post" action="/Setup/DeleteMapping" class="d-inline" data-confirm="این ارتباط حذف شود؟">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@m.Id"><button class="btn btn-sm btn-outline-secondary">حذف</button></form>}
         </td>
       </tr>
       <tr class="collapse" id="map-@m.Id"><td colspan="6">
