@@ -36,7 +36,8 @@ public class PaymentOrderPdfService(IConfiguration configuration,IWebHostEnviron
   var total=summaries.Sum(x=>x.AllocatedAmount);
   var n=1;
   foreach(var x in summaries.OrderByDescending(x=>x.AllocatedAmount).ThenBy(x=>x.SupplierTitle))
-    rows.Append($"<tr><td>{n++}</td><td class='supplier'>{H(x.SupplierTitle)}</td><td>{x.InvoiceCount.ToString("N0",Fa)}</td><td class='money'>{Money(x.AllocatedAmount)} {H(run.AmountUnit)}</td><td>{(total>0?(x.AllocatedAmount/total*100m).ToString("0.00",Fa):"0.00")}٪</td></tr>");
+  { var share=total>0?(x.AllocatedAmount/total*100m).ToString("0.00",Fa):"0.00";
+    rows.Append($"<tr><td>{n++}</td><td class='supplier'>{H(x.SupplierTitle)}</td><td>{x.InvoiceCount.ToString("N0",Fa)}</td><td class='money'>{Money(x.AllocatedAmount)} {H(run.AmountUnit)}</td><td>{share}٪</td></tr>"); }
   return $@"<!doctype html><html lang='fa' dir='rtl'><head><meta charset='utf-8'><style>
 @font-face{{font-family:Vazir;src:url('https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/Vazir-Regular.woff2') format('woff2');font-weight:100 900;font-style:normal}}
 *{{box-sizing:border-box}}html,body{{margin:0;padding:0}}body{{font-family:Vazir,Tahoma,Arial,sans-serif;color:#20374b;background:#fff;direction:rtl;font-size:11px}}@page{{size:A4;margin:12mm}}
