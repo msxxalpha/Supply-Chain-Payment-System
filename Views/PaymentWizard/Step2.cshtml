@@ -1,17 +1,69 @@
-@model Indamin.Payment.Data.PaymentWizardState
-
-@if(Model.MissingParts.Count>0 || Model.MissingSuppliers.Count>0){
-<div class="modal fade" id="missingReferencesModal" tabindex="-1" aria-labelledby="missingReferencesLabel" aria-hidden="true" data-show-on-load="true">
- <div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content border-0 shadow-lg">
-  <div class="modal-header"><div><h5 class="modal-title" id="missingReferencesLabel">اطلاعات پایه موجود نیست</h5><div class="subtle mt-1">فایل Excel بارگذاری شد، اما پیش از محاسبه چند قلم در اطلاعات پایه سامانه پیدا نشد.</div></div><button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal" aria-label="بستن"></button></div>
-  <div class="modal-body"><div class="row g-3">
-   @if(Model.MissingParts.Count>0){<div class="col-lg-6"><div class="info-box h-100"><h6>کالاهای تعریف‌نشده (@Model.MissingParts.Count)</h6><ul class="missing-reference-list">@foreach(var x in Model.MissingParts){<li>@x</li>}</ul><a class="btn btn-sm btn-outline-primary mt-2" href="/Setup/Parts" target="_blank">تعریف کالاها</a></div></div>}
-   @if(Model.MissingSuppliers.Count>0){<div class="col-lg-6"><div class="info-box h-100"><h6>تامین‌کنندگان تعریف‌نشده (@Model.MissingSuppliers.Count)</h6><ul class="missing-reference-list">@foreach(var x in Model.MissingSuppliers){<li>@x</li>}</ul><a class="btn btn-sm btn-outline-primary mt-2" href="/Setup/Suppliers" target="_blank">تعریف تامین‌کنندگان</a></div></div>}
-  </div><div class="alert alert-warning mt-3 mb-0">پس از تعریف موارد بالا، همین فایل را دوباره بارگذاری کنید تا محاسبه انجام شود.</div></div>
-  <div class="modal-footer"><button type="button" class="btn btn-main" data-bs-dismiss="modal">متوجه شدم</button></div>
- </div></div>
+@if(Model.ImportErrorGroups.Count>0){
+<div class="modal fade" id="importErrorsModal" tabindex="-1" aria-labelledby="importErrorsLabel" aria-hidden="true" data-show-on-load="true">
+ <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+  <div class="modal-content border-0 shadow-lg">
+   <div class="modal-header">
+    <div>
+     <h5 class="modal-title" id="importErrorsLabel">خطاهای بارگذاری فایل Excel</h5>
+     <div class="subtle mt-1">فایل بارگذاری شد، اما برای ادامه محاسبه باید موارد زیر اصلاح شوند.</div>
+    </div>
+    <button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal" aria-label="بستن"></button>
+   </div>
+   <div class="modal-body">
+    <div class="alert alert-danger d-flex justify-content-between align-items-center gap-3">
+     <span><b>تعداد کل خطاها:</b> @Model.ImportErrorGroups.Sum(x=>x.Errors.Count)</span>
+     <span class="small">پس از اصلاح فایل، آن را مجدداً بارگذاری کنید.</span>
+    </div>
+    <ul class="nav nav-tabs mb-3" role="tablist">
+     @for(var gi=0;gi<Model.ImportErrorGroups.Count;gi++){
+      var g=Model.ImportErrorGroups[gi];
+      <li class="nav-item" role="presentation">
+       <button class="nav-link @(gi==0?"active":"")" data-bs-toggle="tab" data-bs-target="#import-error-tab-@g.Key" type="button" role="tab">
+        @g.Title <span class="badge text-bg-danger ms-1">@g.Errors.Count</span>
+       </button>
+      </li>
+     }
+    </ul>
+    <div class="tab-content">
+     @for(var gi=0;gi<Model.ImportErrorGroups.Count;gi++){
+      var g=Model.ImportErrorGroups[gi];
+      <div class="tab-pane fade @(gi==0?"show active":"")" id="import-error-tab-@g.Key" role="tabpanel">
+       <div class="error-list-panel">
+        <div class="small text-muted mb-2">موارد نیازمند اصلاح: @g.Errors.Count</div>
+        <ol class="mb-0 pe-3">
+         @foreach(var error in g.Errors){<li class="mb-2">@error</li>}
+        </ol>
+       </div>
+      </div>
+     }
+    </div>
+   </div>
+   <div class="modal-footer">
+    <button type="button" class="btn btn-main" data-bs-dismiss="modal">متوجه شدم</button>
+   </div>
+  </div>
+ </div>
 </div>
 }
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var modalElement = document.getElementById('importErrorsModal');
+    if (modalElement && modalElement.dataset.showOnLoad === 'true') {
+        if (window.bootstrap && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(modalElement).show();
+        } else {
+            modalElement.classList.add('show');
+            modalElement.style.display = 'block';
+            modalElement.removeAttribute('aria-hidden');
+            document.body.classList.add('modal-open');
+            var backdrop = document.createElement('div');
+            backdrop.className = 'modal-backdrop fade show';
+            backdrop.id = 'import-errors-fallback-backdrop';
+            document.body.appendChild(backdrop);
+        }
+    }
+});
+</script>
 @using Indamin.Payment.Data
 @{ViewData["Title"]="گام دوم؛ جذب و محاسبه";var manual=Model.Parameters.Where(x=>x.ScoringMethod==ParameterScoringMethod.Manual).ToList();var idx=0;}
 <div class="wizard-steps"><div class="wizard-step done"><span class="num">✓</span><div><b>تنظیمات محاسبه</b><small>@Model.CalculationDateJalali</small></div></div><div class="wizard-step active"><span class="num">۲</span><div><b>جذب و محاسبه</b><small>Excel، امتیاز و تخصیص</small></div></div><div class="wizard-step"><span class="num">۳</span><div><b>تجمیع و تایید</b><small>خلاصه تامین‌کنندگان</small></div></div></div>
