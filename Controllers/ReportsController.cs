@@ -43,9 +43,10 @@ public class ReportsController(AppDbContext db):Controller
   suppliers=suppliers.Select(x=>x with{Priority=PriorityScore(x.Remaining,maxRemainingSupplier,x.AgeRatio,x.Coverage,x.Overdue,x.Count)}).ToList();
   parts=parts.Select(x=>x with{Priority=PriorityScore(x.Remaining,maxRemainingPart,x.AgeRatio,x.Coverage,x.Overdue,x.Count)}).ToList();
 
+  var activeRuns=runs.Where(x=>!x.IsDeleted).ToList();var status=activeRuns.GroupBy(x=>x.Status).ToDictionary(g=>g.Key,g=>g.Count());
   var recent=activeRuns.Where(x=>x.Status==PaymentRunStatus.Approved||x.Status==PaymentRunStatus.PaymentOrdered).Take(8).Select(x=>new RunRow(x.Id,x.Title,x.CalculationDateJalali,x.ImportedDebt,x.TotalAllocationBudget,x.Invoices.Count,x.Invoices.Sum(i=>i.AllocatedAmount))).ToList();
   var trend=activeRuns.Where(x=>x.Status==PaymentRunStatus.Approved||x.Status==PaymentRunStatus.PaymentOrdered).OrderBy(x=>x.Id).TakeLast(12).Select(x=>new TrendRow(x.CalculationDateJalali,x.TotalAllocationBudget,x.Invoices.Sum(i=>i.AllocatedAmount))).ToList();
-  var activeRuns=runs.Where(x=>!x.IsDeleted).ToList();var status=activeRuns.GroupBy(x=>x.Status).ToDictionary(g=>g.Key,g=>g.Count());
+
   return View(new ReportsVm(activeRuns.Count,activeRuns.Count(x=>x.Status==PaymentRunStatus.Approved||x.Status==PaymentRunStatus.PaymentOrdered),activeRuns.Count(x=>x.Status==PaymentRunStatus.Cancelled),latestByKey.Count,original,allocated,remaining,original>0?allocated/original:0,suppliers,parts,supplierParts,status,trend,recent));
  }
  static decimal PriorityScore(decimal remaining,decimal maxRemaining,decimal ageRatio,decimal coverage,int overdue,int count){if(remaining<=0)return 0;var debt=maxRemaining>0?remaining/maxRemaining:0;var age=Math.Clamp(ageRatio,0,2)/2;var overdueRate=count>0?(decimal)overdue/count:0;var under=1-Math.Clamp(coverage,0,1);var volume=Math.Min(1,count/20m);return Math.Round(100*(debt*.30m+age*.30m+overdueRate*.20m+under*.15m+volume*.05m),1);}
