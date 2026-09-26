@@ -16,7 +16,7 @@
       var active=Model.Tab!="company"&&g==Model.Group;
       <div class="tab-pane fade @(active?"show active":"")" id="lookup-pane-@g.ToLowerInvariant()" role="tabpanel">
         <div class="table-panel mt-3">
-          <div class="panel-title"><div><h4>@((groupTitles.TryGetValue(g,out var title2))?title2:g)</h4><span>آیتم‌های این بخش قابل افزودن، ویرایش، فعال/غیرفعال‌سازی و مرتب‌سازی هستند.</span></div><span class="mini-label">@g</span></div>
+          <div class="panel-title"><div><h4>@((groupTitles.TryGetValue(g,out var title2))?title2:g)</h4><span>آیتم‌های این بخش قابل افزودن، ویرایش، فعال/غیرفعال‌سازی و مرتب‌سازی هستند.</span></div></div>
           <div class="form-panel mb-3">
             <form method="post" action="/Setup/AddLookup" class="row g-2">@Html.AntiForgeryToken()
               <input type="hidden" name="groupCode" value="@g">
