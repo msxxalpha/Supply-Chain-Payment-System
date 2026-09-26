@@ -53,7 +53,7 @@ public class UsersController(AppDbContext db):Controller
   if(role?.IsSystem==true&&!isActive){TempData["Error"]="نقش سیستمی مدیر سامانه را نمی‌توان غیرفعال کرد.";return RedirectToAction(nameof(Index));}
   if(await db.Roles.AnyAsync(x=>x.Id!=(id??0)&&x.Code==code)){TempData["Error"]="کد نقش تکراری است.";return RedirectToAction(nameof(Index));}
   if(role==null){role=new AppRole{Code=code,Title=title,IsActive=isActive,IsSystem=false};db.Roles.Add(role);await db.SaveChangesAsync();}else{role.Code=code;role.Title=title;role.IsActive=isActive;await db.SaveChangesAsync();}
-  var selected=(permissionIds??[]).Distinct().ToHashSet();var valid=await db.Permissions.Where(x=>selected.Contains(x.Id)).Select(x=>x.Id).ToListAsync();var old=await db.RolePermissions.Where(x=>x.RoleId==role.Id).ToListAsync();db.RolePermissions.RemoveRange(old);db.RolePermissions.AddRange(valid.Select(permissionId=>new AppRolePermission{RoleId=role.Id,PermissionId=permissionId}));await db.SaveChangesAsync();
+  var selected=(permissionIds??[]).Distinct().ToHashSet();if(role.IsSystem){var all=await db.Permissions.Select(x=>x.Id).ToListAsync();selected=all.ToHashSet();isActive=true;}var valid=await db.Permissions.Where(x=>selected.Contains(x.Id)).Select(x=>x.Id).ToListAsync();var old=await db.RolePermissions.Where(x=>x.RoleId==role.Id).ToListAsync();db.RolePermissions.RemoveRange(old);db.RolePermissions.AddRange(valid.Select(permissionId=>new AppRolePermission{RoleId=role.Id,PermissionId=permissionId}));await db.SaveChangesAsync();
   await Log(id.HasValue?"UPDATE":"CREATE","AppRole",role.Id.ToString(),$"نقش {role.Title} و دسترسی‌های آن به‌روزرسانی شد.");TempData["Result"]="نقش و سطح دسترسی آن ذخیره شد.";return RedirectToAction(nameof(Index));
  }
 
