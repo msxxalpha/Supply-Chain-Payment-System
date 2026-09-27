@@ -8,7 +8,7 @@
 @if(User.HasClaim("Permission","Payment.Calculate")){<a class="nav-item @Active("/PaymentWizard")" href="/PaymentWizard"><span class="nav-icon">₿</span><span>محاسبه و تخصیص پرداخت</span></a>}
 @if(User.HasClaim("Permission","Payment.NonCalculated")){<a class="nav-item @Active("/NonCalculatedPayment")" href="/NonCalculatedPayment"><span class="nav-icon">⇢</span><span>پرداخت غیرمحاسباتی</span></a>}
 @if(User.HasClaim("Permission","Payment.History")){<a class="nav-item @Active("/PaymentWizard/History")" href="/PaymentWizard/History"><span class="nav-icon">▥</span><span>سوابق تخصیص‌های ثبت‌شده</span></a>}
-@if(User.HasClaim("Permission","Reports.View")){<a class="nav-item @Active("/Reports")" href="/Reports"><span class="nav-icon">◫</span><span>داشبورد و گزارش‌های مالی</span></a>}
+@if(User.HasClaim("Permission","Reports.View")){<a class="nav-item @Active("/Reports")" href="/Reports"><span class="nav-icon">◫</span><span>داشبورد و گزارش‌های مالی</span></a>}@if(User.HasClaim("Permission","Reports.SupplierOverview")){<a class="nav-item @Active("/SupplierOverview")" href="/SupplierOverview"><span class="nav-icon">◉</span><span>مرور تامین‌کننده</span></a>}
 </div>
 @if(User.HasClaim("Permission","Setup.Parameters")||User.HasClaim("Permission","Setup.SystemParameters")||User.HasClaim("Permission","Setup.Parts")||User.HasClaim("Permission","Setup.Suppliers")||User.HasClaim("Permission","Setup.Mappings")||User.HasClaim("Permission","Setup.Evaluations")||User.HasClaim("Permission","Setup.Lookups")){<div class="sidebar-section"><div class="sidebar-caption">اطلاعات پایه</div>
 @if(User.HasClaim("Permission","Setup.Parameters")){<a class="nav-item @Active("/Setup/Parameters")" href="/Setup/Parameters"><span class="nav-icon">◈</span><span>پارامترهای پرداخت</span></a>}
