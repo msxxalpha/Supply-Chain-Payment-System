@@ -345,7 +345,7 @@ public class PaymentCalculationService(AppDbContext db)
 
     public static void DistributeSupplierAllocation(decimal target, List<PaymentCalculationRow> rows){AllocateBudget(target,rows);}
 
-    public static void DistributeSupplierAllocation(decimal target, List<PaymentCalculationRow> rows, decimal initialSharePercent, decimal currentSharePercent, decimal rounding)
+    public static void DistributeSupplierAllocation(decimal target, List<PaymentCalculationRow> rows, decimal initialSharePercent, decimal currentSharePercent, decimal rounding, decimal minAge = 0)
     {
         ValidateShares(initialSharePercent, currentSharePercent, "پرداخت محاسباتی");
         EnsureRounding(rounding);
@@ -362,7 +362,7 @@ public class PaymentCalculationService(AppDbContext db)
             row.AllocatedInitialClaimAmount = 0;
         }
 
-        AllocateCalculatedBudget(target, rows, initialSharePercent, currentSharePercent, decimal.MinValue, 0, rounding);
+        AllocateCalculatedBudget(target, rows, initialSharePercent, currentSharePercent, minAge, 0, rounding);
         foreach (var row in rows) row.WeightedScore = originalWeights[row];
     }
 
