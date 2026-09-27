@@ -1,21 +1,114 @@
 @model Indamin.Payment.Data.NonCalculatedPaymentWizardState
 @using Indamin.Payment.Data
-@{ViewData["Title"]="پرداخت غیرمحاسباتی؛ تعیین مبلغ";}
-<div class="wizard-steps"><div class="wizard-step done"><span class="num">✓</span><div><b>انتخاب تامین‌کنندگان</b><small>@Model.Suppliers.Count تامین‌کننده</small></div></div><div class="wizard-step active"><span class="num">۲</span><div><b>نوع و مبلغ پرداخت</b><small>بررسی و تایید نهایی</small></div></div></div>
-<div class="page-header"><div><div class="eyebrow">پرداخت غیرمحاسباتی</div><h2>@Model.Title</h2><p class="text-muted">تاریخ ثبت: @Model.PaymentDateJalali — سهم پرداخت بین مطالبات استقراری و جاری طبق پارامترهای سیستم تقسیم و در زمان تایید ثبت می‌شود.</p></div></div>
-<form method="post" action="/NonCalculatedPayment/Approve" id="nonCalcApproveForm">
+@{
+    ViewData["Title"] = "پرداخت غیرمحاسباتی؛ ثبت اقلام";
+}
+<div class="wizard-steps">
+    <div class="wizard-step done"><span class="num">✓</span><div><b>انتخاب تامین‌کنندگان</b><small>@Model.Suppliers.Count آیتم</small></div></div>
+    <div class="wizard-step active"><span class="num">۲</span><div><b>ثبت اقلام پرداخت</b><small>نوع، مبلغ و توضیحات</small></div></div>
+    <div class="wizard-step"><span class="num">۳</span><div><b>پیش‌نمایش و ثبت نهایی</b><small>کنترل منابع و صدور دستور پرداخت</small></div></div>
+</div>
+
+<div class="page-header">
+    <div>
+        <div class="eyebrow">پرداخت غیرمحاسباتی</div>
+        <h2>@Model.Title</h2>
+        <p class="text-muted">هر ردیف یک آیتم مستقل است. یک تامین‌کننده می‌تواند چند بار انتخاب شده باشد و برای هر بار نوع پرداخت، مبلغ و توضیحات جداگانه ثبت شود.</p>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="payment-kpi"><span>سهم مطالبات استقراری</span><strong>@Model.NonCalculatedInitialSharePercent.ToString("0.##")٪</strong><small>پارامتر ثبت‌شده در شروع این پرداخت</small></div></div>
+    <div class="col-md-4"><div class="payment-kpi"><span>سهم مطالبات جاری</span><strong>@Model.NonCalculatedCurrentSharePercent.ToString("0.##")٪</strong><small>پارامتر ثبت‌شده در شروع این پرداخت</small></div></div>
+    <div class="col-md-4"><div class="payment-kpi"><span>تعداد اقلام</span><strong>@Model.Suppliers.Count</strong><small>تکرار تامین‌کننده مجاز است</small></div></div>
+</div>
+
+<form method="post" action="/NonCalculatedPayment/Preview" id="nonCalcPreviewForm">
 @Html.AntiForgeryToken()
-<div class="table-panel"><div class="panel-title"><div><h4>اطلاعات نهایی پرداخت</h4><span>در صورت کافی نبودن یک منبع مطالبات، سهم باقی‌مانده خودکار به منبع دیگر منتقل می‌شود.</span></div></div>
-<div class="table-responsive"><table class="table modern-table"><thead><tr><th>#</th><th>تامین‌کننده</th><th>مطالبات استقراری</th><th>مانده مطالبات جاری</th><th>مجموع مطالبات</th><th>نوع پرداخت</th><th>مبلغ (ریال)</th></tr></thead><tbody>
-@for(var i=0;i<Model.Suppliers.Count;i++){var s=Model.Suppliers[i];<tr><td>@(i+1)</td><td class="fw-bold">@s.SupplierTitle<input type="hidden" name="items[@i].SupplierId" value="@s.SupplierId"></td><td>@s.InitialClaimAmount.ToString("N0")</td><td>@s.CurrentDebt.ToString("N0")</td><td class="amount-emphasis">@s.TotalDebt.ToString("N0")</td><td><select class="form-select" name="items[@i].PaymentType"><option value="Cash">نقدی</option><option value="CheckTransfer">واگذاری چک</option><option value="VehicleTransfer">واگذاری خودرو</option><option value="RawMaterialTransfer">واگذاری مواداولیه</option><option value="IntroductionLetter">معرفی نامه</option><option value="CreditLimit">حد اعتباری</option></select></td><td><input class="form-control money-input" name="items[@i].Amount" type="text" inputmode="decimal" value="0" required></td></tr>}
-</tbody></table></div></div>
-<div class="info-box mt-3"><b>روش تسویه خودکار مطالبات:</b> سهم استقراری و جاری از پارامترهای سیستم خوانده می‌شود. در پرداخت جاری، تخصیص از قدیمی‌ترین رسیدها شروع می‌شود و تا صفر شدن هر رسید ادامه پیدا می‌کند؛ اگر مانده یک منبع کمتر از سهم آن باشد، کسری به منبع دیگر منتقل می‌شود.</div>
-<div class="step-actions"><a class="btn btn-outline-secondary" href="/NonCalculatedPayment/Step1">← بازگشت و اصلاح تامین‌کنندگان</a><span class="subtle">پس از تایید، پرداخت در سوابق ثبت می‌شود و تا قبل از دستور پرداخت امکان حذف منطقی دارد.</span><button class="btn btn-main btn-lg" type="submit">ثبت نهایی و تایید پرداخت</button></div>
+<div class="table-panel">
+    <div class="panel-title">
+        <div><h4>اقلام پرداخت غیرمحاسباتی</h4><span>نوع پرداخت: نقدی، واگذاری چک، واگذاری خودرو، واگذاری مواداولیه، معرفی نامه، حد اعتباری</span></div>
+        <span class="validation-chip validation-ok">سهم‌ها ۱۰۰٪</span>
+    </div>
+    <div class="table-responsive table-scroll">
+        <table class="table modern-table align-middle">
+            <thead><tr><th>#</th><th>تامین‌کننده</th><th>مطالبات استقراری فعلی</th><th>مانده مطالبات جاری</th><th>نوع پرداخت</th><th>مبلغ ریالی</th><th>توضیحات</th></tr></thead>
+            <tbody>
+            @for(var i=0;i<Model.Suppliers.Count;i++)
+            {
+                var s=Model.Suppliers[i];
+                <tr>
+                    <td>@(i+1)</td>
+                    <td class="fw-bold">
+                        @s.SupplierTitle
+                        <input type="hidden" name="items[@i].SupplierId" value="@s.SupplierId">
+                    </td>
+                    <td>@s.InitialClaimAmount.ToString("N0")</td>
+                    <td>@s.CurrentDebt.ToString("N0")</td>
+                    <td style="min-width:160px">
+                        <select class="form-select" name="items[@i].PaymentType">
+                            @foreach(var pt in Enum.GetValues<NonCalculatedPaymentType>())
+                            {
+                                <option value="@pt" selected="@(s.PaymentType==pt)">@PaymentTypeTitle(pt)</option>
+                            }
+                        </select>
+                    </td>
+                    <td style="min-width:160px">
+                        <input class="form-control money-input" name="items[@i].Amount" type="text" inputmode="decimal" value="@(s.Amount>0?s.Amount.ToString("0.##",System.Globalization.CultureInfo.InvariantCulture):"")" autocomplete="off" required>
+                    </td>
+                    <td style="min-width:220px">
+                        <input class="form-control" name="items[@i].Description" value="@s.Description" maxlength="2000" placeholder="توضیح این آیتم...">
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="info-box mt-3">
+    <b>نحوه تخصیص منابع:</b> مجموع مبلغ هر تامین‌کننده در مرحله پیش‌نمایش با درصدهای سهم مطالبات استقراری و جاری تفکیک می‌شود. اگر یکی از منابع برای سهم تعیین‌شده کافی نباشد، مانده آن سهم به منبع دیگر منتقل می‌شود. تخصیص بخش جاری در ثبت نهایی از قدیمی‌ترین رسیدهای باز همان تامین‌کننده انجام خواهد شد.
+</div>
+
+<div class="step-actions">
+    <a class="btn btn-outline-secondary" href="/NonCalculatedPayment/Step1">← بازگشت و اصلاح فهرست</a>
+    <button class="btn btn-main btn-lg" type="submit">ثبت اطلاعات و نمایش پیش‌نمایش ←</button>
+</div>
 </form>
+
+@functions {
+    string PaymentTypeTitle(NonCalculatedPaymentType type) => type switch
+    {
+        NonCalculatedPaymentType.Cash => "نقدی",
+        NonCalculatedPaymentType.CheckTransfer => "واگذاری چک",
+        NonCalculatedPaymentType.VehicleTransfer => "واگذاری خودرو",
+        NonCalculatedPaymentType.RawMaterialTransfer => "واگذاری مواداولیه",
+        NonCalculatedPaymentType.IntroductionLetter => "معرفی نامه",
+        NonCalculatedPaymentType.CreditLimit => "حد اعتباری",
+        _ => "نامشخص"
+    };
+}
 <script>
 (function(){
- function norm(s){return(s||"").replace(/[۰-۹]/g,c=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(c))).replace(/[٠-٩]/g,c=>String("٠١٢٣٤٥٦٧٨٩".indexOf(c))).replace(/٬/g,"").replace(/,/g,"").replace(/٫/g,".").replace(/\s/g,"");}
- document.querySelectorAll(".money-input").forEach(el=>{el.addEventListener("focus",()=>{el.value=norm(el.value);});el.addEventListener("blur",()=>{const n=Number(norm(el.value).replace(/[^0-9.]/g,""))||0;el.value=new Intl.NumberFormat("fa-IR",{maximumFractionDigits:0}).format(n);});});
- document.getElementById("nonCalcApproveForm").addEventListener("submit",()=>document.querySelectorAll(".money-input").forEach(el=>{el.value=norm(el.value).replace(/[^0-9.]/g,"")||"0";}));
+    function norm(s){
+        return (s||"")
+            .replace(/[۰-۹]/g,c=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(c)))
+            .replace(/[٠-٩]/g,c=>String("٠١٢٣٤٥٦٧٨٩".indexOf(c)))
+            .replace(/٬/g,"").replace(/,/g,"").replace(/٫/g,".")
+            .replace(/s/g,"");
+    }
+    document.querySelectorAll(".money-input").forEach(el=>{
+        el.addEventListener("focus",()=>{el.value=norm(el.value);});
+        el.addEventListener("blur",()=>{
+            const raw=norm(el.value).replace(/[^0-9.]/g,"");
+            const n=Number(raw)||0;
+            el.value=n>0?new Intl.NumberFormat("fa-IR",{maximumFractionDigits:2}).format(n):"";
+        });
+    });
+    document.getElementById("nonCalcPreviewForm").addEventListener("submit",()=>{
+        document.querySelectorAll(".money-input").forEach(el=>{
+            el.value=norm(el.value).replace(/[^0-9.]/g,"")||"0";
+        });
+    });
 })();
 </script>
