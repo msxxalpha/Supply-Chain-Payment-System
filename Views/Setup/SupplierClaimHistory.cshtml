@@ -1,0 +1,49 @@
+@model Indamin.Payment.Controllers.SetupController.SupplierClaimHistoryVm
+@using Indamin.Payment.Data
+@{
+    ViewData["Title"] = "تاریخچه مطالبات استقراری";
+}
+<div class="page-header">
+    <div>
+        <div class="eyebrow">اطلاعات پایه / تامین‌کنندگان</div>
+        <h2>تاریخچه مطالبات استقراری؛ @Model.Supplier.Title</h2>
+        <p class="text-muted">تمام کاهش‌های ثبت‌شده در مطالبات استقراری این تامین‌کننده، با مرجع پرداخت و کاربر ثبت‌کننده نگهداری می‌شود.</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="/Setup/Suppliers">← بازگشت به تامین‌کنندگان</a>
+</div>
+<div class="payment-kpi-grid mb-3">
+    <div class="payment-kpi"><span>مانده فعلی مطالبات استقراری</span><strong>@Model.Supplier.InitialClaimAmount.ToString("N0")</strong><small>ریال</small></div>
+    <div class="payment-kpi"><span>تعداد تراکنش‌های ثبت‌شده</span><strong>@Model.Rows.Count</strong><small>کاهش/ثبت سابقه</small></div>
+    <div class="payment-kpi"><span>تامین‌کننده</span><strong class="fs-5">@Model.Supplier.Title</strong><small>@Model.Supplier.Code</small></div>
+</div>
+<div class="table-panel">
+    <div class="panel-title">
+        <div><h4>دفتر گردش مطالبات استقراری</h4><span>مبالغ منفی به معنی برداشت بابت پرداخت ثبت‌شده و مبالغ مثبت به معنی برگشت اثر مالی هستند.</span></div>
+    </div>
+    <div class="table-responsive">
+        <table class="table modern-table align-middle">
+            <thead><tr><th>تاریخ</th><th>موجودی قبل</th><th>تغییر</th><th>موجودی بعد</th><th>مرجع</th><th>پرداخت</th><th>ثبت‌کننده</th></tr></thead>
+            <tbody>
+            @if(Model.Rows.Count==0)
+            {
+                <tr><td colspan="7" class="text-center text-muted py-4">برای این تامین‌کننده هنوز گردش مطالبات استقراری ثبت نشده است.</td></tr>
+            }
+            else
+            {
+                @foreach(var x in Model.Rows)
+                {
+                    <tr>
+                        <td>@x.EffectiveDateJalali<br><span class="subtle">@x.CreatedAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</span></td>
+                        <td>@x.AmountBefore.ToString("N0")</td>
+                        <td class="@(x.AmountChange<0?"text-danger":"text-success")">@x.AmountChange.ToString("+#,##0;-#,##0;0")</td>
+                        <td class="amount-emphasis">@x.AmountAfter.ToString("N0")</td>
+                        <td>@x.Reference</td>
+                        <td>@if(x.PaymentRun!=null){<a href="/PaymentWizard/Details/@x.PaymentRun.Id">شماره @x.PaymentRun.Id</a>}else{<span>—</span>}</td>
+                        <td>@(x.User?.DisplayName ?? "—")</td>
+                    </tr>
+                }
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
