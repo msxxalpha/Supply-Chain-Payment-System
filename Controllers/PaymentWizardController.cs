@@ -555,7 +555,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
     [HttpGet]
     public async Task<IActionResult> Details(int id)
     {
-        var x = await db.PaymentRuns.Include(r => r.SupplierSummaries).Include(r => r.Invoices).ThenInclude(i => i.Scores)
+        var x = await db.PaymentRuns.Include(r => r.SupplierSummaries).Include(r => r.SystemParameterSnapshots).Include(r => r.Invoices).ThenInclude(i => i.Scores)
             .SingleOrDefaultAsync(r => r.Id == id);
         if (x == null) return NotFound();
         return View(x);
