@@ -1,0 +1,129 @@
+@model Indamin.Payment.Controllers.SupplierOverviewController.SupplierOverviewVm
+@using Indamin.Payment.Data
+@{
+    ViewData["Title"]="مرور تامین‌کننده";
+    var p = Model.Data?.Profile;
+    var maxPayment = p == null ? 1m : new[]{p.CalculatedPaid,p.CashPaid,p.CheckPaid,p.VehiclePaid,p.RawMaterialPaid,p.IntroductionLetterPaid,p.CreditLimitPaid}.DefaultIfEmpty(1m).Max();
+    string pct(decimal x, decimal baseValue) => (baseValue > 0 ? x / baseValue * 100m : 0).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture);
+}
+<div class="page-header">
+    <div>
+        <div class="eyebrow">تحلیل مالی زنجیره تامین</div>
+        <h2>مرور تامین‌کننده</h2>
+        <p class="text-muted">نمای تحلیلی تجمیعی اطلاعات پایه، مطالبات، پرداخت‌ها و گردش مالی تامین‌کننده.</p>
+    </div>
+</div>
+
+<div class="form-panel mb-3 supplier-picker-panel">
+    <div class="row g-3 align-items-end">
+        <div class="col-lg-8">
+            <label class="form-label">انتخاب تامین‌کننده</label>
+            <select class="form-select form-select-lg" id="supplierOverviewPicker">
+                @foreach(var s in Model.Suppliers)
+                {
+                    <option value="@s.Id" selected="@(p?.SupplierId==s.Id)">@s.Title — @s.Code</option>
+                }
+            </select>
+        </div>
+        <div class="col-lg-4">
+            <a id="openSupplierSetup" class="btn btn-outline-primary btn-lg w-100" href="@(p==null?"#":"/Setup/Suppliers")">اطلاعات پایه تامین‌کنندگان</a>
+        </div>
+    </div>
+</div>
+
+@if(p == null)
+{
+    <div class="info-box">تامین‌کننده فعالی برای نمایش وجود ندارد.</div>
+}
+else
+{
+    <div class="supplier-profile-hero">
+        <div>
+            <div class="eyebrow">پروفایل مالی تامین‌کننده</div>
+            <h1>@p.SupplierTitle</h1>
+            <div class="supplier-profile-meta"><span>کد: @p.SupplierCode</span><span>حوزه فعالیت: @(p.Activities.Count==0?"تعریف نشده":string.Join("، ",p.Activities))</span><span>@p.MappingCount ارتباط فعال کالا</span></div>
+        </div>
+        <div class="supplier-profile-badge"><span>پوشش</span><strong>@(p.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture)٪</strong></div>
+    </div>
+
+    <div class="payment-kpi-grid mt-3">
+        <div class="payment-kpi"><span>مطالبات استقراری فعلی</span><strong>@p.InitialClaim.ToString("N0")</strong><small>ریال</small></div>
+        <div class="payment-kpi"><span>مطالبات جاری فعلی</span><strong>@p.CurrentClaims.ToString("N0")</strong><small>@p.OpenReceiptCount رسید باز</small></div>
+        <div class="payment-kpi"><span>کل دریافتی از محاسبات</span><strong>@p.CalculatedPaid.ToString("N0")</strong><small>تخصیص مبلغ</small></div>
+        <div class="payment-kpi"><span>کل دریافتی غیرمحاسباتی</span><strong>@p.NonCalculatedTotal.ToString("N0")</strong><small>شش نوع پرداخت</small></div>
+    </div>
+
+    <div class="row g-3 mt-1">
+        <div class="col-xl-8">
+            <div class="form-panel h-100">
+                <div class="panel-title"><div><h4>تفکیک کامل دریافتی‌ها</h4><span>مبالغ دستورپرداخت‌شده فعال</span></div><span class="validation-chip validation-ok">جمع @p.TotalPaid.ToString("N0") ریال</span></div>
+                <div class="payment-mix">
+                    <div class="mix-row"><div><span>محاسبه تخصیص مبلغ</span><b>@p.CalculatedPaid.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@pct(p.CalculatedPaid,p.TotalPaid)%"></div></div><small>@pct(p.CalculatedPaid,p.TotalPaid)٪</small></div>
+                    <div class="mix-row"><div><span>نقدی</span><b>@p.CashPaid.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@pct(p.CashPaid,p.TotalPaid)%"></div></div><small>@pct(p.CashPaid,p.TotalPaid)٪</small></div>
+                    <div class="mix-row"><div><span>واگذاری چک</span><b>@p.CheckPaid.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@pct(p.CheckPaid,p.TotalPaid)%"></div></div><small>@pct(p.CheckPaid,p.TotalPaid)٪</small></div>
+                    <div class="mix-row"><div><span>واگذاری خودرو</span><b>@p.VehiclePaid.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@pct(p.VehiclePaid,p.TotalPaid)%"></div></div><small>@pct(p.VehiclePaid,p.TotalPaid)٪</small></div>
+                    <div class="mix-row"><div><span>واگذاری مواداولیه</span><b>@p.RawMaterialPaid.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@pct(p.RawMaterialPaid,p.TotalPaid)%"></div></div><small>@pct(p.RawMaterialPaid,p.TotalPaid)٪</small></div>
+                    <div class="mix-row"><div><span>معرفی نامه</span><b>@p.IntroductionLetterPaid.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@pct(p.IntroductionLetterPaid,p.TotalPaid)%"></div></div><small>@pct(p.IntroductionLetterPaid,p.TotalPaid)٪</small></div>
+                    <div class="mix-row"><div><span>حد اعتباری</span><b>@p.CreditLimitPaid.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@pct(p.CreditLimitPaid,p.TotalPaid)%"></div></div><small>@pct(p.CreditLimitPaid,p.TotalPaid)٪</small></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4">
+            <div class="form-panel h-100">
+                <div class="panel-title"><div><h4>وضعیت مطالبات</h4><span>برآورد آخرین وضعیت فعال</span></div></div>
+                <div class="supplier-debt-cards">
+                    <div><span>مبنای تاریخی استقراری</span><b>@p.HistoricalInitial.ToString("N0")</b></div>
+                    <div><span>مبنای تاریخی جاری</span><b>@p.HistoricalCurrent.ToString("N0")</b></div>
+                    <div><span>مانده کل</span><b>@p.Remaining.ToString("N0")</b></div>
+                    <div><span>رسید سررسید گذشته</span><b>@p.Overdue</b></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="form-panel mt-3">
+        <div class="panel-title"><div><h4>گردش پرداخت تامین‌کننده</h4><span>تفکیک محاسباتی و انواع پرداخت غیرمحاسباتی</span></div></div>
+        <div class="table-responsive"><table class="table modern-table"><thead><tr><th>نوبت</th><th>تاریخ</th><th>نوع نوبت</th><th>نوع پرداخت</th><th>استقراری</th><th>جاری</th><th>مبلغ کل</th><th>وضعیت</th></tr></thead><tbody>
+        @if(Model.Data.PaymentHistory.Count==0)
+        {
+            <tr><td colspan="8" class="text-center text-muted py-4">هنوز پرداخت فعال برای این تامین‌کننده ثبت نشده است.</td></tr>
+        }
+        else
+        {
+            @foreach(var x in Model.Data.PaymentHistory)
+            {
+                <tr><td><a href="/PaymentWizard/Details/@x.RunId">#@x.RunId</a></td><td>@x.Date</td><td>@x.RunTypeTitle</td><td>@x.PaymentTypeTitle</td><td>@x.InitialAmount.ToString("N0")</td><td>@x.CurrentAmount.ToString("N0")</td><td class="amount-emphasis">@x.Amount.ToString("N0")</td><td>@(x.Status==PaymentRunStatus.PaymentOrdered?"دستور پرداخت شده":"تایید شده")</td></tr>
+            }
+        }
+        </tbody></table></div>
+    </div>
+
+    <div class="form-panel mt-3">
+        <div class="panel-title"><div><h4>مطالبات و پرداخت به تفکیک کالا</h4><span>مانده جاری رسیدهای هر کالا</span></div></div>
+        <div class="table-responsive"><table class="table modern-table"><thead><tr><th>کالا</th><th>رسید باز</th><th>مطالبات اولیه</th><th>پرداخت جاری</th><th>مانده</th><th>وضعیت</th></tr></thead><tbody>
+        @foreach(var x in Model.Data.PartBreakdown)
+        {
+            <tr><td class="fw-bold">@x.PartTitle</td><td>@x.OpenReceiptCount</td><td>@x.Original.ToString("N0")</td><td>@x.Paid.ToString("N0")</td><td class="amount-emphasis">@x.Remaining.ToString("N0")</td><td>@(x.HasOverdue?"دارای رسید سررسید گذشته":"عادی")</td></tr>
+        }
+        </tbody></table></div>
+    </div>
+
+    <div class="form-panel mt-3">
+        <div class="panel-title"><div><h4>گردش مطالبات استقراری</h4><span>ثبت تمام افزایش/کاهش‌های دارای سابقه</span></div></div>
+        <div class="table-responsive"><table class="table modern-table"><thead><tr><th>تاریخ</th><th>قبل</th><th>تغییر</th><th>بعد</th><th>مرجع</th><th>نوبت</th></tr></thead><tbody>
+        @if(Model.Data.ClaimHistory.Count==0){<tr><td colspan="6" class="text-center text-muted py-4">گردش ثبت‌شده‌ای وجود ندارد.</td></tr>}
+        else{
+            @foreach(var x in Model.Data.ClaimHistory)
+            {
+                <tr><td>@x.Date</td><td>@x.Before.ToString("N0")</td><td class="@(x.Change<0?"text-danger":"text-success")">@x.Change.ToString("+#,##0;-#,##0;0")</td><td class="amount-emphasis">@x.After.ToString("N0")</td><td>@x.Reference</td><td>@if(x.PaymentRunId.HasValue){<a href="/PaymentWizard/Details/@x.PaymentRunId">#@x.PaymentRunId</a>}else{<span>—</span>}</td></tr>
+            }
+        }
+        </tbody></table></div>
+    </div>
+}
+<script>
+document.getElementById("supplierOverviewPicker")?.addEventListener("change",function(){
+    const id=this.value;
+    window.location.href="/SupplierOverview/Index/"+encodeURIComponent(id);
+});
+</script>
