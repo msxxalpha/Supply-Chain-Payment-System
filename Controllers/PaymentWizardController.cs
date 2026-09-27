@@ -263,7 +263,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
                     throw new InvalidOperationException($"مبلغ تخصیص تامین‌کننده «{group.First().SupplierTitle}» نامعتبر است. سقف مجاز {max:N0} ریال است.");
                 if (Math.Abs(Math.Round(amount / rounding, 8) - Math.Round(amount / rounding, 0)) > .00001m)
                     throw new InvalidOperationException($"مبلغ تخصیص تامین‌کننده «{group.First().SupplierTitle}» باید مضربی از {rounding:N0} ریال باشد.");
-                PaymentCalculationService.DistributeSupplierAllocation(amount, group, initialShare, currentShare, rounding);
+                PaymentCalculationService.DistributeSupplierAllocation(amount, group.ToList(), initialShare, currentShare, rounding);
             }
 
             var total = s.Rows.Sum(x => x.AllocatedAmount);
