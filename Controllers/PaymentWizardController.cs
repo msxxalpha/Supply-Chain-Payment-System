@@ -244,10 +244,11 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
                 settings.GetValueOrDefault("CALC_INITIAL_SHARE")?.Value ?? 50,
                 settings.GetValueOrDefault("CALC_CURRENT_SHARE")?.Value ?? 50,
                 "پرداخت محاسباتی");
-            var rounding = settings.GetValueOrDefault("ALLOCATION_ROUNDING")?.Value ?? 1000000;
+            var rounding = settings.GetValueOrDefault("ALLOCATION_ROUNDING")?.Value ?? 100000;
             var initialShare = settings.GetValueOrDefault("CALC_INITIAL_SHARE")?.Value ?? 50;
             var currentShare = settings.GetValueOrDefault("CALC_CURRENT_SHARE")?.Value ?? 50;
             var minAge = settings.GetValueOrDefault("MIN_EFFECTIVE_DEBT_AGE")?.Value ?? 0;
+            var minAmount = settings.GetValueOrDefault("MIN_ALLOCATION_AMOUNT")?.Value ?? 1;
             PaymentCalculationService.ValidateShares(initialShare, currentShare, "پرداخت محاسباتی");
             var expected = s.Rows.Where(x => x.SupplierId.HasValue).GroupBy(x => x.SupplierId!.Value).ToList();
 
@@ -264,7 +265,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
                     throw new InvalidOperationException($"مبلغ تخصیص تامین‌کننده «{group.First().SupplierTitle}» نامعتبر است. سقف مجاز {max:N0} ریال است.");
                 if (Math.Abs(Math.Round(amount / rounding, 8) - Math.Round(amount / rounding, 0)) > .00001m)
                     throw new InvalidOperationException($"مبلغ تخصیص تامین‌کننده «{group.First().SupplierTitle}» باید مضربی از {rounding:N0} ریال باشد.");
-                PaymentCalculationService.DistributeSupplierAllocation(amount, group.ToList(), initialShare, currentShare, rounding, minAge);
+                PaymentCalculationService.DistributeSupplierAllocation(amount, group.ToList(), initialShare, currentShare, rounding, minAge, minAmount);
             }
 
             var total = s.Rows.Sum(x => x.AllocatedAmount);
