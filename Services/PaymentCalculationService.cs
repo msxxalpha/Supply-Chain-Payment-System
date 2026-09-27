@@ -179,6 +179,7 @@ public class PaymentCalculationService(AppDbContext db)
         }
 
         AllocateCalculatedBudget(s.TotalAllocationBudget, s.Rows, s.CalculatedInitialSharePercent, s.CalculatedCurrentSharePercent, s.MinimumEffectiveDebtAge, s.MinimumAllocationAmount, s.AllocationRounding);
+        return Task.CompletedTask;
     }
 
     public async Task<Dictionary<string, decimal>> PreviousCurrentAsync()
