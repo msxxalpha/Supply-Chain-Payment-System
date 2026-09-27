@@ -620,7 +620,9 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
             if (run == null) throw new InvalidOperationException("محاسبه یافت نشد.");
             if (run.Status != PaymentRunStatus.Approved)
-                throw new InvalidOperationException("فقط محاسبه تاییدشده را می‌توان به دستور پرداخت تبدیل کرد.");
+                throw new InvalidOperationException("فقط پرداخت تاییدشده قابل تبدیل است.");
+            if (run.RunType != PaymentRunType.Calculated)
+                throw new InvalidOperationException("دستور پرداخت این بخش فقط برای پرداخت‌های محاسباتی صادر می‌شود.");
 
             var user = await db.Users.FindAsync(UserId);
             var alreadyApplied = run.FinancialEffectsAppliedAt.HasValue;
