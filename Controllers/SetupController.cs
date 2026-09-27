@@ -67,6 +67,18 @@ namespace Indamin.Payment.Controllers;
  [Authorize(Policy=SecurityPermissions.SetupSuppliers)]
  [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> ImportSuppliers(IFormFile file){if(file==null||file.Length==0){TempData["Error"]="فایل Excel انتخاب نشده است.";return RedirectToAction(nameof(Suppliers));}var acts=await db.LookupValues.Where(x=>x.GroupCode=="SUPPLIER_ACTIVITY"&&x.IsActive).ToDictionaryAsync(x=>N(x.Title),x=>x.Id);List<string> errors;List<SupplierImportRow> rows;try{rows=excel.ReadSuppliers(file.OpenReadStream(),acts,out errors);}catch{TempData["Error"]="خواندن فایل Excel ناموفق بود.";return RedirectToAction(nameof(Suppliers));}foreach(var x in rows){var s=await db.Suppliers.Include(z=>z.Activities).SingleOrDefaultAsync(z=>z.Code==x.Code);if(s==null){s=new Supplier{Code=x.Code,Title=x.Title,InitialClaimAmount=Math.Round(x.InitialClaimAmount,2),IsActive=x.IsActive};db.Suppliers.Add(s);await db.SaveChangesAsync();}else{s.Title=x.Title;if(User.HasClaim("IsAdmin","1")||!await db.SupplierClaimHistories.AnyAsync(h=>h.SupplierId==s.Id&&h.ClaimType==SupplierClaimType.Initial&&h.AmountChange<0))s.InitialClaimAmount=Math.Round(x.InitialClaimAmount,2);s.IsActive=x.IsActive;db.SupplierActivities.RemoveRange(s.Activities);await db.SaveChangesAsync();}db.SupplierActivities.AddRange(x.ActivityIds.Select(a=>new SupplierActivity{SupplierId=s.Id,ActivityId=a}));}await db.SaveChangesAsync();TempData["Result"]=$"{rows.Count} تامین‌کننده وارد/به‌روزرسانی شد."+(errors.Count>0?$" {errors.Count} خطا داشت.":"");return RedirectToAction(nameof(Suppliers));}
  [Authorize(Policy=SecurityPermissions.SetupSuppliers)]
+ public async Task<IActionResult> SupplierClaimHistory(int id)
+ {
+  var supplier=await db.Suppliers.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==id);
+  if(supplier==null)return NotFound();
+  var rows=await db.SupplierClaimHistories
+   .Where(x=>x.SupplierId==id&&x.ClaimType==SupplierClaimType.Initial)
+   .Include(x=>x.PaymentRun).Include(x=>x.User)
+   .OrderByDescending(x=>x.CreatedAt).AsNoTracking().ToListAsync();
+  return View("SupplierClaimHistory",new SupplierClaimHistoryVm(supplier,rows));
+ }
+ 
+ [Authorize(Policy=SecurityPermissions.SetupSuppliers)]
  public async Task<IActionResult> ExportSuppliers(){var x=await db.Suppliers.Include(s=>s.Activities).ThenInclude(a=>a.Activity).OrderBy(s=>s.Code).ToListAsync();return File(excel.Suppliers(x),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","suppliers.xlsx");}
 
  [Authorize(Policy=SecurityPermissions.SetupMappings)]
