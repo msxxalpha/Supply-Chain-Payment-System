@@ -96,7 +96,7 @@ public class FinancialReportingService(AppDbContext db)
                 var originalForPart = g.Sum(x => x.OriginalDebt);
                 var remainingForPart = g.Sum(CurrentRemaining);
                 return new SupplierPartFinanceRow(
-                    g.Key.PartTitle, g.Count(x => CurrentRemaining(x) > 0),
+                    supplier.Title, g.Key.PartTitle, g.Count(x => CurrentRemaining(x) > 0),
                     remainingForPart,
                     currentPaidForPart,
                     originalForPart,
