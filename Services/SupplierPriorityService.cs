@@ -23,7 +23,7 @@ public class SupplierPriorityService(AppDbContext db)
             var ageRatio = open > 0 ? current.Where(x => x.RemainingDebt - CurrentAllocated(x) > 0)
                 .Average(x => x.ContractSettlementDays > 0 ? (decimal)x.DebtAgeDays / x.ContractSettlementDays : 1) : 0;
             var overdue = current.Count(x => x.RemainingDebt - CurrentAllocated(x) > 0 && x.ContractSettlementDays > 0 && x.DebtAgeDays > x.ContractSettlementDays);
-            var paid = invoices.Where(x => x.SupplierId == supplier.Id).Sum(x => x.AllocatedAmount);
+            var paid = await db.PaymentRunSupplierSummaries.AsNoTracking().Where(x => x.SupplierId == supplier.Id && !x.PaymentRun!.IsDeleted && (x.PaymentRun.Status == PaymentRunStatus.Approved || x.PaymentRun.Status == PaymentRunStatus.PaymentOrdered)).SumAsync(x => (decimal?)x.AllocatedAmount) ?? 0;
             var basis = supplier.InitialClaimAmount + current.Sum(x => x.OriginalDebt);
             var coverage = basis > 0 ? Math.Clamp(paid / basis, 0, 1) : 0;
             var remaining = supplier.InitialClaimAmount + currentDebt;
