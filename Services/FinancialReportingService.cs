@@ -61,7 +61,7 @@ public class FinancialReportingService(AppDbContext db)
 
         var initialPaid = paidSummary.Sum(x => x.InitialClaimAllocatedAmount);
         var currentPaid = paidSummary.Sum(x => x.CurrentClaimAllocatedAmount);
-        var typeTotals = BuildSupplierTypeTotals(context.ActiveRuns, supplierId);
+        var typeTotals = BuildSupplierTypeTotals(context.FinancialRuns, supplierId);
 
         var currentClaims = latest.Sum(CurrentRemaining);
         var remaining = supplier.InitialClaimAmount + currentClaims;
