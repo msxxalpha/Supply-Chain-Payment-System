@@ -9,63 +9,708 @@ using Microsoft.EntityFrameworkCore;
 namespace Indamin.Payment.Controllers;
 
 [Authorize]
-public class PaymentWizardController(AppDbContext db,ExcelService excel,PaymentCalculationService calc,PaymentOrderPdfService pdf):Controller
+public class PaymentWizardController(AppDbContext db, ExcelService excel, PaymentCalculationService calc, PaymentOrderPdfService pdf) : Controller
 {
- const string SessionKey="PaymentWizardState";
- int UserId=>int.TryParse(User.FindFirst("UserId")?.Value,out var id)?id:0;
- string UserDisplayName=>User.Identity?.Name??"کاربر";
- public IActionResult Index()=>RedirectToAction(nameof(Step1));
+    const string SessionKey = "PaymentWizardState";
+    int UserId => int.TryParse(User.FindFirst("UserId")?.Value, out var id) ? id : 0;
+    string UserDisplayName => User.Identity?.Name ?? "کاربر";
 
- [Authorize(Policy=SecurityPermissions.PaymentCalculate)]
- [HttpGet]public IActionResult Step1(){var s=Load()??new PaymentWizardState{CalculationDateJalali=PersianDateService.ToJalali(DateTime.Today),PeriodFromJalali=PersianDateService.ToJalali(DateTime.Today.AddDays(-30)),PeriodToJalali=PersianDateService.ToJalali(DateTime.Today),Title="محاسبه تخصیص تامین‌کنندگان"};return View(s);}
- [Authorize(Policy=SecurityPermissions.PaymentCalculate)]
- [HttpPost][ValidateAntiForgeryToken]public IActionResult Step1(PaymentWizardState s){try{var cd=PersianDateService.Parse(s.CalculationDateJalali);var from=PersianDateService.Parse(s.PeriodFromJalali);var to=PersianDateService.Parse(s.PeriodToJalali);if(to<from)throw new InvalidOperationException("تاریخ پایان دوره نمی‌تواند قبل از تاریخ شروع باشد.");if(s.TotalAllocationBudget<0)throw new InvalidOperationException("مبلغ کل قابل تخصیص نمی‌تواند منفی باشد.");s.CalculationDateJalali=PersianDateService.ToJalali(cd);s.PeriodFromJalali=PersianDateService.ToJalali(from);s.PeriodToJalali=PersianDateService.ToJalali(to);s.Title=string.IsNullOrWhiteSpace(s.Title)?"محاسبه تخصیص تامین‌کنندگان":s.Title.Trim();s.Step=2;Save(s);return RedirectToAction(nameof(Step2));}catch(Exception ex){TempData["Error"]=ex.Message;return View(s);}}
+    public IActionResult Index() => RedirectToAction(nameof(Step1));
 
- [Authorize(Policy=SecurityPermissions.PaymentCalculate)]
- [HttpGet]public IActionResult Step2(){var s=Load();if(s==null)return RedirectToAction(nameof(Step1));return View(s);}
- [Authorize(Policy=SecurityPermissions.PaymentCalculate)]
- [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> Import(IFormFile file){var s=Load();if(s==null)return RedirectToAction(nameof(Step1));s.ImportErrorGroups=[];if(file==null||file.Length==0){s.ImportErrorGroups=[new PaymentImportErrorGroup{Key="file",Title="فایل",Errors=["فایل Excel انتخاب نشده است."]}];Save(s);return View("Step2",s);}try{var rows=excel.ReadPaymentInvoices(file.OpenReadStream(),PersianDateService.Parse,out var errors);var from=PersianDateService.Parse(s.PeriodFromJalali);var to=PersianDateService.Parse(s.PeriodToJalali);var outside=rows.Where(x=>x.ReceiptDate.Date<from.Date||x.ReceiptDate.Date>to.Date).ToList();if(outside.Count>0)errors.Add($"{outside.Count} رکورد خارج از بازه زمانی تعیین‌شده است.");s.SourceFileName=Path.GetFileName(file.FileName);s.MissingParts=[];s.MissingSuppliers=[];var partNames=await db.Parts.Where(x=>x.IsActive).Select(x=>x.Title).AsNoTracking().ToListAsync();var supplierNames=await db.Suppliers.Where(x=>x.IsActive).Select(x=>x.Title).AsNoTracking().ToListAsync();var knownParts=partNames.Select(Normalize).ToHashSet();var knownSuppliers=supplierNames.Select(Normalize).ToHashSet(); s.MissingParts=rows.Select(x=>x.PartTitle.Trim()).Where(x=>x!=""&&!knownParts.Contains(Normalize(x))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x=>x).ToList();s.MissingSuppliers=rows.Select(x=>x.SupplierTitle.Trim()).Where(x=>x!=""&&!knownSuppliers.Contains(Normalize(x))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x=>x).ToList();var referenceErrors=new List<string>();referenceErrors.AddRange(s.MissingParts.Select(x=>$"کالا «{x}» در اطلاعات پایه تعریف نشده یا فعال نیست."));referenceErrors.AddRange(s.MissingSuppliers.Select(x=>$"تامین‌کننده «{x}» در اطلاعات پایه تعریف نشده یا فعال نیست."));var partRows=await db.Parts.Where(x=>x.IsActive).AsNoTracking().Select(x=>new{x.Id,x.Title}).ToListAsync();var supplierRows=await db.Suppliers.Where(x=>x.IsActive).AsNoTracking().Select(x=>new{x.Id,x.Title}).ToListAsync();var partByName=partRows.GroupBy(x=>Normalize(x.Title)).Where(g=>g.Count()==1).ToDictionary(g=>g.Key,g=>g.First());var supplierByName=supplierRows.GroupBy(x=>Normalize(x.Title)).Where(g=>g.Count()==1).ToDictionary(g=>g.Key,g=>g.First());var activeMappings=await db.SupplierParts.Where(x=>x.IsActive&&x.Supplier!.IsActive&&x.Part!.IsActive).AsNoTracking().Select(x=>new{x.PartId,x.SupplierId}).ToListAsync();var mappingKeys=activeMappings.Select(x=>$"{x.PartId}:{x.SupplierId}").ToHashSet();var mappingErrors=rows.Where(x=>partByName.ContainsKey(Normalize(x.PartTitle))&&supplierByName.ContainsKey(Normalize(x.SupplierTitle))).Select(x=>new{Part=x.PartTitle.Trim(),Supplier=x.SupplierTitle.Trim(),Key=$"{partByName[Normalize(x.PartTitle)].Id}:{supplierByName[Normalize(x.SupplierTitle)].Id}"}).Where(x=>!mappingKeys.Contains(x.Key)).Select(x=>$"ارتباط فعال بین کالا «{x.Part}» و تامین‌کننده «{x.Supplier}» در اطلاعات پایه تعریف نشده است.").Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x=>x).ToList();referenceErrors.AddRange(mappingErrors);errors.AddRange(referenceErrors);if(errors.Count>0){s.Rows=[];s.Parameters=[];s.ImportedDebt=rows.Sum(x=>x.DebtAmount);s.RemainingDebt=rows.Sum(x=>x.DebtAmount);s.ImportErrorGroups=CategorizeImportErrors(errors);Save(s);return View("Step2",s);}await calc.CalculateAsync(s,rows);s.MissingParts=[];s.MissingSuppliers=[];Save(s);return RedirectToAction(nameof(Step2));}catch(Exception ex){s.ImportErrorGroups=[new PaymentImportErrorGroup{Key="system",Title="خطای پردازش فایل",Errors=[ex.Message]}];Save(s);return View("Step2",s);}}
- static List<PaymentImportErrorGroup> CategorizeImportErrors(List<string> errors){var defs=new[]{("format","فرمت و ساختار فایل",new[]{"فایل Excel","ستون","فرمت","Excel"}),("required","اطلاعات ناقص و اجباری",new[]{"الزامی"}),("mapping","ارتباط کالا و تامین‌کننده",new[]{"ارتباط فعال بین کالا","قطعه–تامین‌کننده","قطعه-تامین‌کننده"}),("parts","کالاهای تعریف‌نشده",new[]{"کالا «"}),("suppliers","تامین‌کنندگان تعریف‌نشده",new[]{"تامین‌کننده «"}),("amount","خطاهای مبلغ",new[]{"مبلغ بدهی","مبلغ"}),("date","خطاهای تاریخ و بازه",new[]{"تاریخ","بازه زمانی"}),("row","خطاهای سطری و داده‌ای",new[]{"سطر"})};var groups=defs.Select(x=>new PaymentImportErrorGroup{Key=x.Item1,Title=x.Item2,Errors=[]}).ToList();foreach(var e in errors.Distinct(StringComparer.OrdinalIgnoreCase)){var g=groups.FirstOrDefault(x=>defs.First(d=>d.Item1==x.Key).Item3.Any(k=>e.Contains(k,StringComparison.OrdinalIgnoreCase)));(g??groups.Last()).Errors.Add(e);}return groups.Where(x=>x.Errors.Count>0).ToList();}
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpGet]
+    public IActionResult Step1()
+    {
+        var s = Load() ?? new PaymentWizardState
+        {
+            CalculationDateJalali = PersianDateService.ToJalali(DateTime.Today),
+            PeriodFromJalali = PersianDateService.ToJalali(DateTime.Today.AddDays(-30)),
+            PeriodToJalali = PersianDateService.ToJalali(DateTime.Today),
+            Title = "محاسبه تخصیص تامین‌کنندگان"
+        };
+        return View(s);
+    }
 
- [Authorize(Policy=SecurityPermissions.PaymentCalculate)]
- [HttpPost][ValidateAntiForgeryToken]public IActionResult UpdateScores(List<ScoreEditItem> items){var s=Load();if(s==null)return RedirectToAction(nameof(Step1));foreach(var i in items.Where(x=>x.RowIndex>=0&&x.RowIndex<s.Rows.Count)){var r=s.Rows[i.RowIndex];var cell=r.Scores.FirstOrDefault(x=>x.ParameterId==i.ParameterId);if(cell==null||cell.Source!="ارزیابی قطعه-تامین‌کننده")continue;if(i.Score<1||i.Score>5){TempData["Error"]="امتیاز پارامترهای دستی باید بین 1 تا 5 باشد.";return View("Step2",s);}cell.Score=i.Score;cell.Contribution=Math.Round(i.Score*cell.Weight/100m,6);}foreach(var r in s.Rows)r.WeightedScore=r.Scores.Sum(x=>x.Contribution);PaymentCalculationService.AllocateBudget(s.TotalAllocationBudget,s.Rows);foreach(var r in s.Rows)r.CalculatedAllocatedAmount=r.AllocatedAmount;Save(s);TempData["Result"]="امتیازهای دستی و مبلغ تخصیص‌یافته مجدداً محاسبه شد.";return RedirectToAction(nameof(Step2));}
- [Authorize(Policy=SecurityPermissions.PaymentCalculate)]
- [HttpPost][ValidateAntiForgeryToken]public IActionResult UpdateSupplierAllocations(List<SupplierAllocationEditItem> items){var s=Load();if(s==null)return RedirectToAction(nameof(Step1));var expected=s.Rows.Where(x=>x.SupplierId.HasValue).GroupBy(x=>x.SupplierId!.Value).ToList();if(items.Count!=expected.Count||items.GroupBy(x=>x.SupplierId).Any(g=>g.Count()!=1)||expected.Any(g=>!items.Any(x=>x.SupplierId==g.Key))){TempData["Error"]="اطلاعات تخصیص تامین‌کنندگان ناقص یا تکراری است.";return RedirectToAction(nameof(Step3));}var submitted=items.ToDictionary(x=>x.SupplierId,x=>Math.Round(x.Amount,2));foreach(var g in expected){var amount=submitted[g.Key];if(amount<0){TempData["Error"]=$"مبلغ تخصیص تامین‌کننده «{g.First().SupplierTitle}» نمی‌تواند منفی باشد.";return RedirectToAction(nameof(Step3));}var max=g.Sum(x=>x.RemainingDebt);if(amount>max+.005m){TempData["Error"]=$"مبلغ تخصیص تامین‌کننده «{g.First().SupplierTitle}» از مانده بدهی او بیشتر است. سقف مجاز {max:N0} است.";return RedirectToAction(nameof(Step3));}}foreach(var g in expected)PaymentCalculationService.DistributeSupplierAllocation(submitted[g.Key],g.ToList());var total=s.Rows.Sum(x=>x.AllocatedAmount);if(total>s.TotalAllocationBudget+.005m){TempData["Error"]="جمع تخصیص تامین‌کنندگان نمی‌تواند از بودجه این نوبت بیشتر باشد.";return RedirectToAction(nameof(Step3));}foreach(var r in s.Rows)r.AllocationRatio=total>0?Math.Round(r.AllocatedAmount/total,8):0;Save(s);TempData["Result"]="تخصیص نهایی تامین‌کنندگان ذخیره شد.";return RedirectToAction(nameof(Step3));}
- [Authorize(Policy=SecurityPermissions.PaymentCalculate)]
- [HttpPost][ValidateAntiForgeryToken]public IActionResult GoStep3(){var s=Load();if(s==null)return RedirectToAction(nameof(Step1));if(s.Rows.Count==0){TempData["Error"]="هیچ بدهی باقی‌مانده‌ای برای تخصیص وجود ندارد.";return RedirectToAction(nameof(Step2));}if(s.Rows.Any(r=>r.Scores.Any(x=>x.Source=="ارزیابی قطعه-تامین‌کننده"&&(x.Score<1||x.Score>5)))){TempData["Error"]="تمام پارامترهای دستی باید امتیاز معتبر داشته باشند.";return RedirectToAction(nameof(Step2));}s.Step=3;Save(s);return RedirectToAction(nameof(Step3));}
- [Authorize(Policy=SecurityPermissions.PaymentCalculate)]
- [HttpGet]public IActionResult Step3(){var s=Load();if(s==null)return RedirectToAction(nameof(Step1));if(s.Rows.Count==0)return RedirectToAction(nameof(Step2));return View(s);}
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult Step1(PaymentWizardState s)
+    {
+        try
+        {
+            var cd = PersianDateService.Parse(s.CalculationDateJalali);
+            var from = PersianDateService.Parse(s.PeriodFromJalali);
+            var to = PersianDateService.Parse(s.PeriodToJalali);
+            if (to < from) throw new InvalidOperationException("تاریخ پایان دوره نمی‌تواند قبل از تاریخ شروع باشد.");
+            if (s.TotalAllocationBudget < 0) throw new InvalidOperationException("مبلغ کل قابل تخصیص نمی‌تواند منفی باشد.");
+            s.CalculationDateJalali = PersianDateService.ToJalali(cd);
+            s.PeriodFromJalali = PersianDateService.ToJalali(from);
+            s.PeriodToJalali = PersianDateService.ToJalali(to);
+            s.Title = string.IsNullOrWhiteSpace(s.Title) ? "محاسبه تخصیص تامین‌کنندگان" : s.Title.Trim();
+            s.Step = 2;
+            Save(s);
+            return RedirectToAction(nameof(Step2));
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = ex.Message;
+            return View(s);
+        }
+    }
 
- [Authorize(Policy=SecurityPermissions.PaymentApprove)]
- [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> Approve(){var s=Load();if(s==null)return RedirectToAction(nameof(Step1));await using var tx=await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);try{var previous=await db.PaymentRunInvoices.Where(x=>!x.PaymentRun!.IsDeleted&&(x.PaymentRun.Status==PaymentRunStatus.Approved||x.PaymentRun.Status==PaymentRunStatus.PaymentOrdered)).GroupBy(x=>x.PaymentKeyHash).Select(g=>new{Key=g.Key,Amount=g.Sum(x=>x.AllocatedAmount)}).ToDictionaryAsync(x=>x.Key,x=>x.Amount);foreach(var r in s.Rows){var current=previous.GetValueOrDefault(PaymentCalculationService.KeyHash(r.ReceiptNo,r.Warehouse,r.PartTitle,r.SupplierTitle));if(current!=r.PreviousAllocated)throw new InvalidOperationException($"تخصیص قبلی رسید «{r.ReceiptNo}» تغییر کرده است. لطفاً محاسبه را از ابتدا انجام دهید.");if(r.AllocatedAmount<0||r.AllocatedAmount>r.RemainingDebt)throw new InvalidOperationException($"مبلغ تخصیص‌یافته رسید «{r.ReceiptNo}» نامعتبر است.");}var user=await db.Users.FindAsync(UserId);var run=new PaymentRun{Title=s.Title,CalculationDateJalali=s.CalculationDateJalali,CalculationDate=s.CalcDate(),PeriodFromJalali=s.PeriodFromJalali,PeriodToJalali=s.PeriodToJalali,PeriodFrom=PersianDateService.Parse(s.PeriodFromJalali),PeriodTo=PersianDateService.Parse(s.PeriodToJalali),TotalAllocationBudget=s.TotalAllocationBudget,AmountUnit=s.AmountUnit,ImportedDebt=s.ImportedDebt,RemainingDebt=s.RemainingDebt,ImportedRowCount=s.Rows.Count,SourceFileName=s.SourceFileName,Notes=s.Notes,Status=PaymentRunStatus.Approved,CreatedBy=UserId,ApprovedBy=UserId,ApprovedAt=DateTime.UtcNow,PreparedByNameSnapshot=user?.DisplayName??UserDisplayName,ConfirmedByNameSnapshot=user?.DisplayName??UserDisplayName};db.PaymentRuns.Add(run);await db.SaveChangesAsync();foreach(var p in s.Parameters)db.PaymentRunParameterSnapshots.Add(new PaymentRunParameterSnapshot{PaymentRunId=run.Id,PaymentParameterId=p.Id,Code=p.Code,Title=p.Title,Type=p.Type,Weight=p.Weight,MaxScore=p.MaxScore,ScoringGuide=p.ScoringGuide,ScoringMethod=p.ScoringMethod,SortOrder=p.SortOrder});await db.SaveChangesAsync();var totalAssigned=s.Rows.Sum(x=>x.AllocatedAmount);foreach(var g in s.Rows.GroupBy(x=>new{x.SupplierId,x.SupplierTitle}))db.PaymentRunSupplierSummaries.Add(new PaymentRunSupplierSummary{PaymentRunId=run.Id,SupplierId=g.Key.SupplierId!.Value,SupplierTitle=g.Key.SupplierTitle,InvoiceCount=g.Count(),RemainingDebt=g.Sum(x=>x.RemainingDebt),AllocatedAmount=g.Sum(x=>x.AllocatedAmount),AllocationPercent=totalAssigned>0?Math.Round(g.Sum(x=>x.AllocatedAmount)/totalAssigned,8):0});await db.SaveChangesAsync();foreach(var r in s.Rows){var inv=new PaymentRunInvoice{PaymentRunId=run.Id,PaymentKeyHash=PaymentCalculationService.KeyHash(r.ReceiptNo,r.Warehouse,r.PartTitle,r.SupplierTitle),ReceiptNo=r.ReceiptNo,Warehouse=r.Warehouse,PartTitle=r.PartTitle,SupplierTitle=r.SupplierTitle,PartId=r.PartId,SupplierId=r.SupplierId,OriginalDebt=r.OriginalDebt,ReceiptDate=r.ReceiptDate,ReceiptDateJalali=r.ReceiptDateJalali,ContractSettlementDays=r.ContractSettlementDays,SupplyCapacity=r.SupplyCapacity,SupplierInitialClaimAmount=r.SupplierInitialClaimAmount,DebtAgeDays=r.DebtAgeDays,PreviousAllocated=r.PreviousAllocated,RemainingDebt=r.RemainingDebt,SupplierOutstandingDebt=r.SupplierOutstandingDebt,WeightedScore=r.WeightedScore,AllocationRatio=r.AllocationRatio,CalculatedAllocatedAmount=r.CalculatedAllocatedAmount,AllocatedAmount=r.AllocatedAmount,SourceRowNumber=r.SourceRowNumber};db.PaymentRunInvoices.Add(inv);await db.SaveChangesAsync();foreach(var sc in r.Scores)db.PaymentInvoiceScores.Add(new PaymentInvoiceScore{PaymentRunInvoiceId=inv.Id,PaymentParameterId=sc.ParameterId,Score=sc.Score,Weight=sc.Weight,WeightedContribution=sc.Contribution,ScoringSource=sc.Source,ParameterTitleSnapshot=sc.ParameterTitle,ParameterCodeSnapshot=s.Parameters.FirstOrDefault(p=>p.Id==sc.ParameterId)?.Code??"",ParameterTypeSnapshot=s.Parameters.FirstOrDefault(p=>p.Id==sc.ParameterId)?.Type??PaymentParameterType.Financial,MaxScoreSnapshot=s.Parameters.FirstOrDefault(p=>p.Id==sc.ParameterId)?.MaxScore??5,ScoringGuideSnapshot=s.Parameters.FirstOrDefault(p=>p.Id==sc.ParameterId)?.ScoringGuide??"",ScoringMethodSnapshot=s.Parameters.FirstOrDefault(p=>p.Id==sc.ParameterId)?.ScoringMethod??ParameterScoringMethod.Manual});await db.SaveChangesAsync();}db.AuditLogs.Add(new AuditLog{Action="APPROVE",Entity="PaymentRun",EntityId=run.Id.ToString(),Details=$"مبلغ تخصیص: {s.Rows.Sum(x=>x.AllocatedAmount):N0}",UserId=UserId});await db.SaveChangesAsync();await tx.CommitAsync();HttpContext.Session.Remove(SessionKey);TempData["Result"]=$"محاسبه پرداخت با شماره {run.Id} با موفقیت تایید و ثبت شد.";return RedirectToAction(nameof(History));}catch(Exception ex){await tx.RollbackAsync();TempData["Error"]=ex.Message;return RedirectToAction(nameof(Step3));}}
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpGet]
+    public IActionResult Step2()
+    {
+        var s = Load();
+        if (s == null) return RedirectToAction(nameof(Step1));
+        return View(s);
+    }
 
- [Authorize(Policy=SecurityPermissions.PaymentCalculate)]
- [HttpPost][ValidateAntiForgeryToken]public IActionResult Cancel(){HttpContext.Session.Remove(SessionKey);TempData["Result"]="فرایند محاسبه لغو شد.";return RedirectToAction(nameof(Step1));}
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Import(IFormFile file)
+    {
+        var s = Load();
+        if (s == null) return RedirectToAction(nameof(Step1));
+        s.ImportErrorGroups = [];
 
- [Authorize(Policy=SecurityPermissions.PaymentHistory)]
- [HttpGet]public async Task<IActionResult> History(){var rows=await db.PaymentRuns.Where(x=>!x.IsDeleted&&(x.Status==PaymentRunStatus.Approved||x.Status==PaymentRunStatus.PaymentOrdered)).Include(x=>x.Invoices).OrderByDescending(x=>x.Id).ToListAsync();return View(rows);}
- [Authorize(Policy=SecurityPermissions.PaymentHistory)]
- [HttpGet]public async Task<IActionResult> Deleted(){var rows=await db.PaymentRuns.Where(x=>x.IsDeleted).Include(x=>x.Invoices).OrderByDescending(x=>x.Id).ToListAsync();return View(rows);}
- [Authorize(Policy=SecurityPermissions.PaymentHistory)]
- [HttpGet]public async Task<IActionResult> Details(int id){var x=await db.PaymentRuns.Include(r=>r.SupplierSummaries).Include(r=>r.Invoices).ThenInclude(i=>i.Scores).SingleOrDefaultAsync(r=>r.Id==id);if(x==null)return NotFound();return View(x);}
- [Authorize(Policy=SecurityPermissions.PaymentCalculate)]
- [HttpGet]public IActionResult ExportPreview(){var s=Load();if(s==null)return RedirectToAction(nameof(Step1));return File(excel.PaymentRows(s.Rows,s.Parameters),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","payment-calculation.xlsx");}
- [Authorize(Policy=SecurityPermissions.PaymentHistory)]
- [HttpGet]public async Task<IActionResult> ExportRun(int id){var run=await db.PaymentRuns.Include(x=>x.Invoices).ThenInclude(x=>x.Scores).SingleOrDefaultAsync(x=>x.Id==id);if(run==null)return NotFound();var rows=run.Invoices.Select(x=>new PaymentCalculationRow{ReceiptNo=x.ReceiptNo,Warehouse=x.Warehouse,PartTitle=x.PartTitle,SupplierTitle=x.SupplierTitle,OriginalDebt=x.OriginalDebt,PreviousAllocated=x.PreviousAllocated,RemainingDebt=x.RemainingDebt,SupplierOutstandingDebt=x.SupplierOutstandingDebt,ContractSettlementDays=x.ContractSettlementDays,DebtAgeDays=x.DebtAgeDays,WeightedScore=x.WeightedScore,AllocationRatio=x.AllocationRatio,CalculatedAllocatedAmount=x.CalculatedAllocatedAmount,AllocatedAmount=x.AllocatedAmount,ReceiptDate=x.ReceiptDate,ReceiptDateJalali=x.ReceiptDateJalali,Scores=x.Scores.Select(sc=>new PaymentScoreResult{ParameterId=sc.PaymentParameterId,ParameterTitle=sc.ParameterTitleSnapshot,Type=sc.ParameterTypeSnapshot,Weight=sc.Weight,Score=sc.Score,Contribution=sc.WeightedContribution,Source=sc.ScoringSource}).ToList()}).ToList();var ps=await db.PaymentRunParameterSnapshots.Where(x=>x.PaymentRunId==id).OrderBy(x=>x.SortOrder).ThenBy(x=>x.Title).AsNoTracking().ToListAsync();var snapshotParameters=ps.Select(x=>new PaymentParameterSnapshot(x.PaymentParameterId,x.Code,x.Title,x.Type,x.Weight,x.MaxScore,x.ScoringGuide,x.ScoringMethod,x.SortOrder)).ToList();return File(excel.PaymentRows(rows,snapshotParameters),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",$"payment-run-{id}.xlsx");}
- [Authorize(Policy=SecurityPermissions.PaymentHistory)]
- [HttpGet]public async Task<IActionResult> ExportSummary(int id){var rows=await db.PaymentRunSupplierSummaries.Where(x=>x.PaymentRunId==id).OrderByDescending(x=>x.AllocatedAmount).Select(x=>new{x.SupplierTitle,x.AllocatedAmount,x.InvoiceCount}).ToListAsync();return File(excel.SupplierSummary(rows.Select(x=>(x.SupplierTitle,x.AllocatedAmount,x.InvoiceCount))),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",$"supplier-summary-{id}.xlsx");}
+        if (file == null || file.Length == 0)
+        {
+            s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "file", Title = "فرمت و ساختار فایل", Errors = ["فایل Excel انتخاب نشده است."] }];
+            Save(s);
+            return View("Step2", s);
+        }
 
- [Authorize(Policy=SecurityPermissions.PaymentOrderCreate)]
- [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> CreatePaymentOrder(int id){await using var tx=await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);try{var run=await db.PaymentRuns.SingleOrDefaultAsync(x=>x.Id==id&&!x.IsDeleted);if(run==null)throw new InvalidOperationException("محاسبه یافت نشد.");if(run.Status!=PaymentRunStatus.Approved)throw new InvalidOperationException("فقط محاسبه تاییدشده را می‌توان به دستور پرداخت تبدیل کرد.");var user=await db.Users.FindAsync(UserId);run.Status=PaymentRunStatus.PaymentOrdered;run.PaymentOrderNumber=$"DP-{run.Id:000000}";run.PaymentOrderedAt=DateTime.UtcNow;run.PaymentOrderedBy=UserId;run.PaymentOrderApproverNameSnapshot=user?.DisplayName??UserDisplayName;db.AuditLogs.Add(new AuditLog{Action="PAYMENT_ORDER",Entity="PaymentRun",EntityId=run.Id.ToString(),Details=$"تبدیل محاسبه به دستور پرداخت {run.PaymentOrderNumber}",UserId=UserId});await db.SaveChangesAsync();await tx.CommitAsync();TempData["Result"]=$"محاسبه شماره {run.Id} به دستور پرداخت {run.PaymentOrderNumber} تبدیل شد و از این پس غیرقابل ویرایش است.";return RedirectToAction(nameof(History));}catch(Exception ex){await tx.RollbackAsync();TempData["Error"]=ex.Message;return RedirectToAction(nameof(History));}}
+        try
+        {
+            var rows = excel.ReadPaymentInvoices(file.OpenReadStream(), PersianDateService.Parse, out var errors);
+            var from = PersianDateService.Parse(s.PeriodFromJalali);
+            var to = PersianDateService.Parse(s.PeriodToJalali);
+            var outside = rows.Where(x => x.ReceiptDate.Date < from.Date || x.ReceiptDate.Date > to.Date).ToList();
+            if (outside.Count > 0) errors.Add($"{outside.Count} رکورد خارج از بازه زمانی تعیین‌شده است.");
 
- [Authorize(Policy=SecurityPermissions.PaymentOrderDownload)]
- [HttpGet]public async Task<IActionResult> DownloadPaymentOrder(int id){var run=await db.PaymentRuns.Include(x=>x.SupplierSummaries).SingleOrDefaultAsync(x=>x.Id==id&&!x.IsDeleted);if(run==null)return NotFound();if(run.Status!=PaymentRunStatus.PaymentOrdered)throw new InvalidOperationException("این محاسبه هنوز به دستور پرداخت تبدیل نشده است.");var company=await db.CompanySettings.SingleOrDefaultAsync(x=>x.Id==1)??new CompanySettings();var bytes=await pdf.GenerateAsync(company,run,run.SupplierSummaries);return File(bytes,"application/pdf",$"payment-order-{run.PaymentOrderNumber??run.Id.ToString()}.pdf");}
+            s.SourceFileName = Path.GetFileName(file.FileName);
+            s.MissingParts = [];
+            s.MissingSuppliers = [];
 
- [Authorize(Policy=SecurityPermissions.PaymentDelete)]
- [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> Delete(int id){await using var tx=await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);try{var run=await db.PaymentRuns.SingleOrDefaultAsync(x=>x.Id==id&&!x.IsDeleted);if(run==null)throw new InvalidOperationException("محاسبه یافت نشد.");if(run.Status!=PaymentRunStatus.Approved)throw new InvalidOperationException("محاسبه پس از تبدیل به دستور پرداخت قابل حذف نیست.");var keys=await db.PaymentRunInvoices.Where(x=>x.PaymentRunId==id&&x.AllocatedAmount>0).Select(x=>x.PaymentKeyHash).ToListAsync();if(keys.Count>0){var dependent=await db.PaymentRunInvoices.Where(x=>!x.PaymentRun!.IsDeleted&&x.PaymentRunId>id&&keys.Contains(x.PaymentKeyHash)&&x.PreviousAllocated>0).Select(x=>new{x.PaymentRunId,x.PaymentRun!.Status,x.ReceiptNo}).Take(10).ToListAsync();if(dependent.Count>0)throw new InvalidOperationException("این محاسبه در محاسبات بعدی مورد استفاده قرار گرفته است؛ ابتدا محاسبات بعدی وابسته را حذف کنید تا ترتیب مانده بدهی و snapshotها حفظ شود.");}run.IsDeleted=true;run.Status=PaymentRunStatus.Cancelled;run.DeletedAt=DateTime.UtcNow;run.DeletedBy=UserId;run.DeleteReason="حذف منطقی توسط کاربر";db.AuditLogs.Add(new AuditLog{Action="DELETE_LOGICAL",Entity="PaymentRun",EntityId=run.Id.ToString(),Details=$"محاسبه شماره {run.Id} حذف منطقی شد؛ تخصیص‌های آن دیگر در مانده بدهی محاسبات بعدی لحاظ نمی‌شود.",UserId=UserId});await db.SaveChangesAsync();await tx.CommitAsync();TempData["Result"]=$"محاسبه شماره {run.Id} حذف منطقی شد و اثر تخصیص آن از محاسبات بعدی خارج شد.";return RedirectToAction(nameof(History));}catch(Exception ex){await tx.RollbackAsync();TempData["Error"]=ex.Message;return RedirectToAction(nameof(History));}}
+            var parts = await db.Parts.Where(x => x.IsActive).AsNoTracking().Select(x => new { x.Id, x.Title }).ToListAsync();
+            var suppliers = await db.Suppliers.Where(x => x.IsActive).AsNoTracking().Select(x => new { x.Id, x.Title }).ToListAsync();
+            var partByName = parts.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
+            var supplierByName = suppliers.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
 
- PaymentWizardState? Load(){var json=HttpContext.Session.GetString(SessionKey);return string.IsNullOrWhiteSpace(json)?null:JsonSerializer.Deserialize<PaymentWizardState>(json);}
- void Save(PaymentWizardState s)=>HttpContext.Session.SetString(SessionKey,JsonSerializer.Serialize(s));
- static string Normalize(string v)=>(v??"").Trim().Replace("ي","ی").Replace("ك","ک").ToLowerInvariant();
- public class ScoreEditItem{public int RowIndex{get;set;}public int ParameterId{get;set;}public decimal Score{get;set;}}
+            s.MissingParts = rows.Select(x => x.PartTitle.Trim()).Where(x => x != "" && !partByName.ContainsKey(Normalize(x))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+            s.MissingSuppliers = rows.Select(x => x.SupplierTitle.Trim()).Where(x => x != "" && !supplierByName.ContainsKey(Normalize(x))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+
+            errors.AddRange(s.MissingParts.Select(x => $"کالا «{x}» در اطلاعات پایه تعریف نشده یا فعال نیست."));
+            errors.AddRange(s.MissingSuppliers.Select(x => $"تامین‌کننده «{x}» در اطلاعات پایه تعریف نشده یا فعال نیست."));
+
+            var activeMappings = await db.SupplierParts.Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
+                .AsNoTracking().Select(x => new { x.PartId, x.SupplierId }).ToListAsync();
+            var mappingKeys = activeMappings.Select(x => $"{x.PartId}:{x.SupplierId}").ToHashSet();
+            var mappingErrors = rows
+                .Where(x => partByName.ContainsKey(Normalize(x.PartTitle)) && supplierByName.ContainsKey(Normalize(x.SupplierTitle)))
+                .Select(x => new
+                {
+                    Part = x.PartTitle.Trim(),
+                    Supplier = x.SupplierTitle.Trim(),
+                    Key = $"{partByName[Normalize(x.PartTitle)].Id}:{supplierByName[Normalize(x.SupplierTitle)].Id}"
+                })
+                .Where(x => !mappingKeys.Contains(x.Key))
+                .Select(x => $"ارتباط فعال بین کالا «{x.Part}» و تامین‌کننده «{x.Supplier}» در اطلاعات پایه تعریف نشده است.")
+                .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+            errors.AddRange(mappingErrors);
+
+            if (errors.Count > 0)
+            {
+                s.Rows = [];
+                s.Parameters = [];
+                s.ImportedDebt = rows.Sum(x => x.DebtAmount);
+                s.RemainingDebt = rows.Sum(x => x.DebtAmount);
+                s.ImportErrorGroups = CategorizeImportErrors(errors);
+                Save(s);
+                return View("Step2", s);
+            }
+
+            await calc.CalculateAsync(s, rows);
+            s.ImportErrorGroups = [];
+            s.MissingParts = [];
+            s.MissingSuppliers = [];
+            Save(s);
+            return RedirectToAction(nameof(Step2));
+        }
+        catch (Exception ex)
+        {
+            s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "system", Title = "خطای پردازش فایل", Errors = [ex.Message] }];
+            Save(s);
+            return View("Step2", s);
+        }
+    }
+
+    static List<PaymentImportErrorGroup> CategorizeImportErrors(List<string> errors)
+    {
+        var defs = new[]
+        {
+            ("format", "فرمت و ساختار فایل", new[] { "فایل Excel", "ستون", "فرمت", "Excel" }),
+            ("required", "اطلاعات ناقص و اجباری", new[] { "الزامی" }),
+            ("mapping", "ارتباط کالا و تامین‌کننده", new[] { "ارتباط فعال بین کالا", "قطعه–تامین‌کننده", "قطعه-تامین‌کننده" }),
+            ("parts", "کالاهای تعریف‌نشده", new[] { "کالا «" }),
+            ("suppliers", "تامین‌کنندگان تعریف‌نشده", new[] { "تامین‌کننده «" }),
+            ("amount", "خطاهای مبلغ", new[] { "مبلغ بدهی", "مبلغ" }),
+            ("date", "خطاهای تاریخ و بازه", new[] { "تاریخ", "بازه زمانی" }),
+            ("row", "خطاهای سطری و داده‌ای", new[] { "سطر" })
+        };
+        var groups = defs.Select(x => new PaymentImportErrorGroup { Key = x.Item1, Title = x.Item2, Errors = [] }).ToList();
+        foreach (var e in errors.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var g = groups.FirstOrDefault(x => defs.First(d => d.Item1 == x.Key).Item3.Any(k => e.Contains(k, StringComparison.OrdinalIgnoreCase)));
+            (g ?? groups.Last()).Errors.Add(e);
+        }
+        return groups.Where(x => x.Errors.Count > 0).ToList();
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateScores(List<ScoreEditItem> items)
+    {
+        var s = Load();
+        if (s == null) return RedirectToAction(nameof(Step1));
+
+        foreach (var item in items.Where(x => x.RowIndex >= 0 && x.RowIndex < s.Rows.Count))
+        {
+            var row = s.Rows[item.RowIndex];
+            var score = row.Scores.FirstOrDefault(x => x.ParameterId == item.ParameterId);
+            if (score == null || score.Source != "ارزیابی قطعه-تامین‌کننده") continue;
+            if (item.Score < 1 || item.Score > 5)
+            {
+                TempData["Error"] = "امتیاز پارامترهای دستی باید بین 1 تا 5 باشد.";
+                return RedirectToAction(nameof(Step2));
+            }
+            score.Score = item.Score;
+            score.Contribution = Math.Round(item.Score * score.Weight / 100m, 6);
+        }
+
+        try
+        {
+            await calc.RecalculateAllocationAsync(s);
+            Save(s);
+            TempData["Result"] = "امتیازهای دستی و مبلغ تخصیص‌یافته با قواعد جدید مجدداً محاسبه شد.";
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+        return RedirectToAction(nameof(Step2));
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateSupplierAllocations(List<SupplierAllocationEditItem> items)
+    {
+        var s = Load();
+        if (s == null) return RedirectToAction(nameof(Step1));
+        try
+        {
+            var settings = await calc.LoadSystemParametersAsync();
+            PaymentCalculationService.ValidateShares(
+                settings.GetValueOrDefault("CALC_INITIAL_SHARE")?.Value ?? 50,
+                settings.GetValueOrDefault("CALC_CURRENT_SHARE")?.Value ?? 50,
+                "پرداخت محاسباتی");
+            var rounding = settings.GetValueOrDefault("ALLOCATION_ROUNDING")?.Value ?? 1000000;
+            var initialShare = settings.GetValueOrDefault("CALC_INITIAL_SHARE")?.Value ?? 50;
+            var currentShare = settings.GetValueOrDefault("CALC_CURRENT_SHARE")?.Value ?? 50;
+            PaymentCalculationService.ValidateShares(initialShare, currentShare, "پرداخت محاسباتی");
+            var expected = s.Rows.Where(x => x.SupplierId.HasValue).GroupBy(x => x.SupplierId!.Value).ToList();
+
+            if (items.Count != expected.Count || items.GroupBy(x => x.SupplierId).Any(g => g.Count() != 1) || expected.Any(g => !items.Any(x => x.SupplierId == g.Key)))
+                throw new InvalidOperationException("اطلاعات تخصیص تامین‌کنندگان ناقص یا تکراری است.");
+
+            var submitted = items.ToDictionary(x => x.SupplierId, x => Math.Round(x.Amount, 2));
+            foreach (var group in expected)
+            {
+                var amount = submitted[group.Key];
+                var initial = group.First().SupplierInitialClaimAmount;
+                var max = Math.Round(group.Sum(x => x.RemainingDebt) + initial, 2);
+                if (amount < 0 || amount > max + .005m)
+                    throw new InvalidOperationException($"مبلغ تخصیص تامین‌کننده «{group.First().SupplierTitle}» نامعتبر است. سقف مجاز {max:N0} ریال است.");
+                if (Math.Abs(Math.Round(amount / rounding, 8) - Math.Round(amount / rounding, 0)) > .00001m)
+                    throw new InvalidOperationException($"مبلغ تخصیص تامین‌کننده «{group.First().SupplierTitle}» باید مضربی از {rounding:N0} ریال باشد.");
+                PaymentCalculationService.DistributeSupplierAllocation(amount, group, initialShare, currentShare, rounding);
+            }
+
+            var total = s.Rows.Sum(x => x.AllocatedAmount);
+            if (total > s.TotalAllocationBudget + .005m)
+                throw new InvalidOperationException("جمع تخصیص تامین‌کنندگان نمی‌تواند از بودجه این نوبت بیشتر باشد.");
+            foreach (var row in s.Rows)
+                row.AllocationRatio = total > 0 ? Math.Round(row.AllocatedAmount / total, 8) : 0;
+
+            Save(s);
+            TempData["Result"] = "تخصیص نهایی تامین‌کنندگان ذخیره شد.";
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+        return RedirectToAction(nameof(Step3));
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult GoStep3()
+    {
+        var s = Load();
+        if (s == null) return RedirectToAction(nameof(Step1));
+        if (s.Rows.Count == 0)
+        {
+            TempData["Error"] = "هیچ بدهی باقی‌مانده‌ای برای تخصیص وجود ندارد.";
+            return RedirectToAction(nameof(Step2));
+        }
+        if (s.Rows.Any(r => r.Scores.Any(x => x.Source == "ارزیابی قطعه-تامین‌کننده" && (x.Score < 1 || x.Score > 5))))
+        {
+            TempData["Error"] = "تمام پارامترهای دستی باید امتیاز معتبر داشته باشند.";
+            return RedirectToAction(nameof(Step2));
+        }
+        s.Step = 3;
+        Save(s);
+        return RedirectToAction(nameof(Step3));
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpGet]
+    public IActionResult Step3()
+    {
+        var s = Load();
+        if (s == null) return RedirectToAction(nameof(Step1));
+        if (s.Rows.Count == 0) return RedirectToAction(nameof(Step2));
+        return View(s);
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentApprove)]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Approve()
+    {
+        var s = Load();
+        if (s == null) return RedirectToAction(nameof(Step1));
+
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
+        {
+            var previous = await calc.PreviousCurrentAsync();
+            var supplierIds = s.Rows.Where(x => x.SupplierId.HasValue).Select(x => x.SupplierId!.Value).Distinct().ToList();
+            var suppliers = await db.Suppliers.Where(x => supplierIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+            foreach (var group in s.Rows.GroupBy(x => x.SupplierId!.Value))
+            {
+                if (!suppliers.TryGetValue(group.Key, out var supplier))
+                    throw new InvalidOperationException($"تامین‌کننده «{group.First().SupplierTitle}» دیگر فعال نیست.");
+                var snapshotInitial = group.First().SupplierInitialClaimAmount;
+                if (Math.Abs(supplier.InitialClaimAmount - snapshotInitial) > .005m)
+                    throw new InvalidOperationException($"مطالبات استقراری تامین‌کننده «{supplier.Title}» در زمان محاسبه تغییر کرده است. محاسبه را مجدداً انجام دهید.");
+
+                if (group.Sum(x => x.AllocatedInitialClaimAmount) > supplier.InitialClaimAmount + .005m)
+                    throw new InvalidOperationException($"مبلغ تخصیص استقراری تامین‌کننده «{supplier.Title}» از مانده مطالبات استقراری او بیشتر است.");
+
+                foreach (var row in group)
+                {
+                    var key = PaymentCalculationService.KeyHash(row.ReceiptNo, row.Warehouse, row.PartTitle, row.SupplierTitle);
+                    var livePrevious = previous.GetValueOrDefault(key);
+                    if (livePrevious != row.PreviousAllocated)
+                        throw new InvalidOperationException($"تخصیص قبلی رسید «{row.ReceiptNo}» تغییر کرده است. لطفاً محاسبه را از ابتدا انجام دهید.");
+                    if (row.AllocatedCurrentAmount < 0 || row.AllocatedCurrentAmount > row.RemainingDebt + .005m)
+                        throw new InvalidOperationException($"مبلغ جاری تخصیص‌یافته رسید «{row.ReceiptNo}» نامعتبر است.");
+                    if (row.AllocatedAmount < 0)
+                        throw new InvalidOperationException($"مبلغ تخصیص‌یافته رسید «{row.ReceiptNo}» نامعتبر است.");
+                    if (s.AllocationRounding > 0 && Math.Abs(Math.Round(row.AllocatedAmount / s.AllocationRounding, 8) - Math.Round(row.AllocatedAmount / s.AllocationRounding, 0)) > .00001m)
+                        throw new InvalidOperationException($"مبلغ تخصیص رسید «{row.ReceiptNo}» باید مضربی از {s.AllocationRounding:N0} ریال باشد.");
+                }
+            }
+
+            var user = await db.Users.FindAsync(UserId);
+            var run = new PaymentRun
+            {
+                RunType = PaymentRunType.Calculated,
+                Title = s.Title,
+                CalculationDateJalali = s.CalculationDateJalali,
+                CalculationDate = s.CalcDate(),
+                PeriodFromJalali = s.PeriodFromJalali,
+                PeriodToJalali = s.PeriodToJalali,
+                PeriodFrom = PersianDateService.Parse(s.PeriodFromJalali),
+                PeriodTo = PersianDateService.Parse(s.PeriodToJalali),
+                TotalAllocationBudget = s.Rows.Sum(x => x.AllocatedAmount),
+                AmountUnit = "ریال",
+                ImportedDebt = s.ImportedDebt,
+                RemainingDebt = s.RemainingDebt,
+                ImportedRowCount = s.Rows.Count,
+                SourceFileName = s.SourceFileName,
+                Notes = s.Notes,
+                Status = PaymentRunStatus.Approved,
+                CreatedBy = UserId,
+                ApprovedBy = UserId,
+                ApprovedAt = DateTime.UtcNow,
+                PreparedByNameSnapshot = user?.DisplayName ?? UserDisplayName,
+                ConfirmedByNameSnapshot = user?.DisplayName ?? UserDisplayName
+            };
+            db.PaymentRuns.Add(run);
+            await db.SaveChangesAsync();
+
+            await SaveSystemParameterSnapshotsAsync(run.Id);
+            foreach (var p in s.Parameters)
+                db.PaymentRunParameterSnapshots.Add(new PaymentRunParameterSnapshot
+                {
+                    PaymentRunId = run.Id, PaymentParameterId = p.Id, Code = p.Code, Title = p.Title, Type = p.Type,
+                    Weight = p.Weight, MaxScore = p.MaxScore, ScoringGuide = p.ScoringGuide,
+                    ScoringMethod = p.ScoringMethod, SortOrder = p.SortOrder
+                });
+            await db.SaveChangesAsync();
+
+            var totalAssigned = s.Rows.Sum(x => x.AllocatedAmount);
+            foreach (var group in s.Rows.GroupBy(x => x.SupplierId!.Value))
+            {
+                var supplier = suppliers[group.Key];
+                var initialBefore = supplier.InitialClaimAmount;
+                var initialAllocated = group.Sum(x => x.AllocatedInitialClaimAmount);
+                var currentAllocated = group.Sum(x => x.AllocatedCurrentAmount);
+                var totalAllocated = initialAllocated + currentAllocated;
+                db.PaymentRunSupplierSummaries.Add(new PaymentRunSupplierSummary
+                {
+                    PaymentRunId = run.Id,
+                    SupplierId = supplier.Id,
+                    SupplierTitle = supplier.Title,
+                    InvoiceCount = group.Count(),
+                    RemainingDebt = group.Sum(x => x.RemainingDebt) + initialBefore,
+                    AllocatedAmount = totalAllocated,
+                    InitialClaimAllocatedAmount = initialAllocated,
+                    CurrentClaimAllocatedAmount = currentAllocated,
+                    InitialClaimBefore = initialBefore,
+                    InitialClaimAfter = initialBefore - initialAllocated,
+                    RequestedAmount = totalAllocated,
+                    AllocationPercent = totalAssigned > 0 ? Math.Round(totalAllocated / totalAssigned, 8) : 0
+                });
+                if (initialAllocated > 0)
+                {
+                    supplier.InitialClaimAmount = Math.Round(initialBefore - initialAllocated, 2);
+                    db.SupplierClaimHistories.Add(new SupplierClaimHistory
+                    {
+                        SupplierId = supplier.Id,
+                        ClaimType = SupplierClaimType.Initial,
+                        AmountBefore = initialBefore,
+                        AmountChange = -initialAllocated,
+                        AmountAfter = supplier.InitialClaimAmount,
+                        PaymentRunId = run.Id,
+                        Reference = $"کاهش مطالبات استقراری بابت پرداخت محاسباتی شماره {run.Id}",
+                        EffectiveDateJalali = s.CalculationDateJalali,
+                        UserId = UserId
+                    });
+                }
+            }
+            await db.SaveChangesAsync();
+
+            foreach (var row in s.Rows)
+            {
+                var inv = new PaymentRunInvoice
+                {
+                    PaymentRunId = run.Id,
+                    PaymentKeyHash = PaymentCalculationService.KeyHash(row.ReceiptNo, row.Warehouse, row.PartTitle, row.SupplierTitle),
+                    ReceiptNo = row.ReceiptNo,
+                    Warehouse = row.Warehouse,
+                    PartTitle = row.PartTitle,
+                    SupplierTitle = row.SupplierTitle,
+                    PartId = row.PartId,
+                    SupplierId = row.SupplierId,
+                    OriginalDebt = row.OriginalDebt,
+                    ReceiptDate = row.ReceiptDate,
+                    ReceiptDateJalali = row.ReceiptDateJalali,
+                    ContractSettlementDays = row.ContractSettlementDays,
+                    SupplyCapacity = row.SupplyCapacity,
+                    SupplierInitialClaimAmount = row.SupplierInitialClaimAmount,
+                    DebtAgeDays = row.DebtAgeDays,
+                    PreviousAllocated = row.PreviousAllocated,
+                    RemainingDebt = row.RemainingDebt,
+                    SupplierOutstandingDebt = row.SupplierOutstandingDebt,
+                    WeightedScore = row.WeightedScore,
+                    AllocationRatio = row.AllocationRatio,
+                    CalculatedAllocatedAmount = row.CalculatedAllocatedAmount,
+                    CalculatedCurrentAllocatedAmount = row.CalculatedCurrentAllocatedAmount,
+                    CalculatedInitialClaimAllocatedAmount = row.CalculatedInitialClaimAllocatedAmount,
+                    AllocatedCurrentAmount = row.AllocatedCurrentAmount,
+                    AllocatedInitialClaimAmount = row.AllocatedInitialClaimAmount,
+                    AllocatedAmount = row.AllocatedAmount,
+                    SourceRowNumber = row.SourceRowNumber
+                };
+                db.PaymentRunInvoices.Add(inv);
+                await db.SaveChangesAsync();
+                foreach (var score in row.Scores)
+                {
+                    var parameter = s.Parameters.FirstOrDefault(p => p.Id == score.ParameterId);
+                    db.PaymentInvoiceScores.Add(new PaymentInvoiceScore
+                    {
+                        PaymentRunInvoiceId = inv.Id,
+                        PaymentParameterId = score.ParameterId,
+                        Score = score.Score,
+                        Weight = score.Weight,
+                        WeightedContribution = score.Contribution,
+                        ScoringSource = score.Source,
+                        ParameterTitleSnapshot = score.ParameterTitle,
+                        ParameterCodeSnapshot = parameter?.Code ?? "",
+                        ParameterTypeSnapshot = parameter?.Type ?? PaymentParameterType.Financial,
+                        MaxScoreSnapshot = parameter?.MaxScore ?? 5,
+                        ScoringGuideSnapshot = parameter?.ScoringGuide ?? "",
+                        ScoringMethodSnapshot = parameter?.ScoringMethod ?? ParameterScoringMethod.Manual
+                    });
+                }
+                await db.SaveChangesAsync();
+            }
+
+            db.AuditLogs.Add(new AuditLog
+            {
+                Action = "APPROVE",
+                Entity = "PaymentRun",
+                EntityId = run.Id.ToString(),
+                Details = $"محاسبه محاسباتی؛ تخصیص استقراری: {s.Rows.Sum(x => x.AllocatedInitialClaimAmount):N0}؛ تخصیص جاری: {s.Rows.Sum(x => x.AllocatedCurrentAmount):N0}",
+                UserId = UserId
+            });
+            await db.SaveChangesAsync();
+
+            await tx.CommitAsync();
+            HttpContext.Session.Remove(SessionKey);
+            TempData["Result"] = $"محاسبه پرداخت شماره {run.Id} با موفقیت تایید و ثبت شد.";
+            return RedirectToAction(nameof(History));
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            TempData["Error"] = ex.Message;
+            return RedirectToAction(nameof(Step3));
+        }
+    }
+
+    async Task SaveSystemParameterSnapshotsAsync(int runId)
+    {
+        var values = await db.SystemParameters.Where(x => x.IsActive).AsNoTracking().ToListAsync();
+        db.PaymentRunSystemParameterSnapshots.AddRange(values.Select(x => new PaymentRunSystemParameterSnapshot
+        {
+            PaymentRunId = runId, Code = x.Code, Title = x.Title, ValueType = x.ValueType, Value = x.Value, Unit = x.Unit
+        }));
+        await db.SaveChangesAsync();
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult Cancel()
+    {
+        HttpContext.Session.Remove(SessionKey);
+        TempData["Result"] = "فرایند محاسبه لغو شد.";
+        return RedirectToAction(nameof(Step1));
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentHistory)]
+    [HttpGet]
+    public async Task<IActionResult> History()
+    {
+        var rows = await db.PaymentRuns.Where(x => !x.IsDeleted && (x.Status == PaymentRunStatus.Approved || x.Status == PaymentRunStatus.PaymentOrdered))
+            .Include(x => x.Invoices).Include(x => x.SupplierSummaries).OrderByDescending(x => x.Id).ToListAsync();
+        return View(rows);
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentHistory)]
+    [HttpGet]
+    public async Task<IActionResult> Deleted()
+    {
+        var rows = await db.PaymentRuns.Where(x => x.IsDeleted).Include(x => x.Invoices).Include(x => x.SupplierSummaries)
+            .OrderByDescending(x => x.Id).ToListAsync();
+        return View(rows);
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentHistory)]
+    [HttpGet]
+    public async Task<IActionResult> Details(int id)
+    {
+        var x = await db.PaymentRuns.Include(r => r.SupplierSummaries).Include(r => r.Invoices).ThenInclude(i => i.Scores)
+            .SingleOrDefaultAsync(r => r.Id == id);
+        if (x == null) return NotFound();
+        return View(x);
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpGet]
+    public IActionResult ExportPreview()
+    {
+        var s = Load();
+        if (s == null) return RedirectToAction(nameof(Step1));
+        return File(excel.PaymentRows(s.Rows, s.Parameters), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "payment-calculation.xlsx");
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentHistory)]
+    [HttpGet]
+    public async Task<IActionResult> ExportRun(int id)
+    {
+        var run = await db.PaymentRuns.Include(x => x.Invoices).ThenInclude(x => x.Scores).SingleOrDefaultAsync(x => x.Id == id);
+        if (run == null) return NotFound();
+
+        var rows = run.Invoices.Select(x => new PaymentCalculationRow
+        {
+            ReceiptNo = x.ReceiptNo, Warehouse = x.Warehouse, PartTitle = x.PartTitle, SupplierTitle = x.SupplierTitle,
+            OriginalDebt = x.OriginalDebt, PreviousAllocated = x.PreviousAllocated, RemainingDebt = x.RemainingDebt,
+            SupplierOutstandingDebt = x.SupplierOutstandingDebt, ContractSettlementDays = x.ContractSettlementDays, DebtAgeDays = x.DebtAgeDays,
+            WeightedScore = x.WeightedScore, AllocationRatio = x.AllocationRatio,
+            CalculatedAllocatedAmount = x.CalculatedAllocatedAmount,
+            CalculatedCurrentAllocatedAmount = x.CalculatedCurrentAllocatedAmount,
+            CalculatedInitialClaimAllocatedAmount = x.CalculatedInitialClaimAllocatedAmount,
+            AllocatedCurrentAmount = x.AllocatedCurrentAmount, AllocatedInitialClaimAmount = x.AllocatedInitialClaimAmount,
+            AllocatedAmount = x.AllocatedAmount, ReceiptDate = x.ReceiptDate, ReceiptDateJalali = x.ReceiptDateJalali,
+            Scores = x.Scores.Select(sc => new PaymentScoreResult
+            {
+                ParameterId = sc.PaymentParameterId, ParameterTitle = sc.ParameterTitleSnapshot, Type = sc.ParameterTypeSnapshot,
+                Weight = sc.Weight, Score = sc.Score, Contribution = sc.WeightedContribution, Source = sc.ScoringSource
+            }).ToList()
+        }).ToList();
+
+        var ps = await db.PaymentRunParameterSnapshots.Where(x => x.PaymentRunId == id).OrderBy(x => x.SortOrder).ThenBy(x => x.Title).AsNoTracking().ToListAsync();
+        var snapshotParameters = ps.Select(x => new PaymentParameterSnapshot(x.PaymentParameterId, x.Code, x.Title, x.Type, x.Weight, x.MaxScore, x.ScoringGuide, x.ScoringMethod, x.SortOrder)).ToList();
+        return File(excel.PaymentRows(rows, snapshotParameters), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"payment-run-{id}.xlsx");
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentHistory)]
+    [HttpGet]
+    public async Task<IActionResult> ExportSummary(int id)
+    {
+        var rows = await db.PaymentRunSupplierSummaries.Where(x => x.PaymentRunId == id).OrderByDescending(x => x.AllocatedAmount)
+            .Select(x => new { x.SupplierTitle, x.AllocatedAmount, x.InitialClaimAllocatedAmount, x.CurrentClaimAllocatedAmount, x.InvoiceCount, x.PaymentType }).ToListAsync();
+        return File(excel.SupplierSummary(rows.Select(x => (
+            x.SupplierTitle, x.AllocatedAmount, x.InvoiceCount))), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"supplier-summary-{id}.xlsx");
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentOrderCreate)]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreatePaymentOrder(int id)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
+        {
+            var run = await db.PaymentRuns.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+            if (run == null) throw new InvalidOperationException("محاسبه یافت نشد.");
+            if (run.Status != PaymentRunStatus.Approved) throw new InvalidOperationException("فقط پرداخت تاییدشده را می‌توان به دستور پرداخت تبدیل کرد.");
+            var user = await db.Users.FindAsync(UserId);
+            run.Status = PaymentRunStatus.PaymentOrdered;
+            run.PaymentOrderNumber = $"DP-{run.Id:000000}";
+            run.PaymentOrderedAt = DateTime.UtcNow;
+            run.PaymentOrderedBy = UserId;
+            run.PaymentOrderApproverNameSnapshot = user?.DisplayName ?? UserDisplayName;
+            db.AuditLogs.Add(new AuditLog
+            {
+                Action = "PAYMENT_ORDER", Entity = "PaymentRun", EntityId = run.Id.ToString(),
+                Details = $"تبدیل پرداخت شماره {run.Id} به دستور پرداخت {run.PaymentOrderNumber}", UserId = UserId
+            });
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+            TempData["Result"] = $"پرداخت شماره {run.Id} به دستور پرداخت {run.PaymentOrderNumber} تبدیل شد و از این پس غیرقابل ویرایش است.";
+            return RedirectToAction(nameof(History));
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            TempData["Error"] = ex.Message;
+            return RedirectToAction(nameof(History));
+        }
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentOrderDownload)]
+    [HttpGet]
+    public async Task<IActionResult> DownloadPaymentOrder(int id)
+    {
+        var run = await db.PaymentRuns.Include(x => x.SupplierSummaries).SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+        if (run == null) return NotFound();
+        if (run.Status != PaymentRunStatus.PaymentOrdered) throw new InvalidOperationException("این پرداخت هنوز به دستور پرداخت تبدیل نشده است.");
+        var company = await db.CompanySettings.SingleOrDefaultAsync(x => x.Id == 1) ?? new CompanySettings();
+        var bytes = await pdf.GenerateAsync(company, run, run.SupplierSummaries);
+        return File(bytes, "application/pdf", $"payment-order-{run.PaymentOrderNumber ?? run.Id.ToString()}.pdf");
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentDelete)]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Delete(int id)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
+        {
+            var run = await db.PaymentRuns.Include(x => x.SupplierSummaries).SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+            if (run == null) throw new InvalidOperationException("محاسبه یافت نشد.");
+            if (run.Status != PaymentRunStatus.Approved) throw new InvalidOperationException("پرداخت پس از تبدیل به دستور پرداخت قابل حذف نیست.");
+
+            var keys = await db.PaymentRunInvoices.Where(x => x.PaymentRunId == id && x.AllocatedCurrentAmount > 0 || x.PaymentRunId == id && x.AllocatedCurrentAmount == 0 && x.AllocatedInitialClaimAmount == 0 && x.AllocatedAmount > 0)
+                .Select(x => x.PaymentKeyHash).ToListAsync();
+            if (keys.Count > 0)
+            {
+                var dependent = await db.PaymentRunInvoices.Where(x => !x.PaymentRun!.IsDeleted && x.PaymentRunId > id && keys.Contains(x.PaymentKeyHash) && x.PreviousAllocated > 0)
+                    .Select(x => new { x.PaymentRunId, x.ReceiptNo }).Take(10).ToListAsync();
+                if (dependent.Count > 0) throw new InvalidOperationException("این پرداخت در محاسبات بعدی مورد استفاده قرار گرفته است؛ ابتدا محاسبات بعدی وابسته را حذف کنید.");
+            }
+
+            var initialSupplierIds = run.SupplierSummaries.Where(x => x.InitialClaimAllocatedAmount > 0).Select(x => x.SupplierId).ToList();
+            if (initialSupplierIds.Count > 0)
+            {
+                var laterInitial = await db.PaymentRunSupplierSummaries.Where(x => !x.PaymentRun!.IsDeleted && x.PaymentRunId > id && initialSupplierIds.Contains(x.SupplierId) && x.AllocatedAmount > 0)
+                    .Select(x => x.PaymentRunId).Take(10).ToListAsync();
+                if (laterInitial.Count > 0) throw new InvalidOperationException("این پرداخت از مطالبات استقراری تامین‌کننده استفاده کرده و در پرداخت‌های بعدی نیز همان تامین‌کننده تخصیص گرفته است؛ ابتدا پرداخت‌های بعدی وابسته را حذف کنید.");
+            }
+
+            foreach (var summary in run.SupplierSummaries.Where(x => x.InitialClaimAllocatedAmount > 0))
+            {
+                var supplier = await db.Suppliers.SingleAsync(x => x.Id == summary.SupplierId);
+                var before = supplier.InitialClaimAmount;
+                supplier.InitialClaimAmount = Math.Round(before + summary.InitialClaimAllocatedAmount, 2);
+                db.SupplierClaimHistories.Add(new SupplierClaimHistory
+                {
+                    SupplierId = supplier.Id,
+                    ClaimType = SupplierClaimType.Initial,
+                    AmountBefore = before,
+                    AmountChange = summary.InitialClaimAllocatedAmount,
+                    AmountAfter = supplier.InitialClaimAmount,
+                    PaymentRunId = run.Id,
+                    Reference = $"برگشت مطالبات استقراری بابت حذف منطقی پرداخت شماره {run.Id}",
+                    EffectiveDateJalali = run.CalculationDateJalali,
+                    UserId = UserId
+                });
+            }
+
+            run.IsDeleted = true;
+            run.Status = PaymentRunStatus.Cancelled;
+            run.DeletedAt = DateTime.UtcNow;
+            run.DeletedBy = UserId;
+            run.DeleteReason = "حذف منطقی توسط کاربر";
+            db.AuditLogs.Add(new AuditLog
+            {
+                Action = "DELETE_LOGICAL", Entity = "PaymentRun", EntityId = run.Id.ToString(),
+                Details = $"پرداخت شماره {run.Id} حذف منطقی شد و مطالبات استقراری تخصیص‌یافته آن برگشت داده شد.", UserId = UserId
+            });
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+            TempData["Result"] = $"پرداخت شماره {run.Id} حذف منطقی شد و آثار آن به‌صورت تراکنشی برگشت داده شد.";
+            return RedirectToAction(nameof(History));
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            TempData["Error"] = ex.Message;
+            return RedirectToAction(nameof(History));
+        }
+    }
+
+    PaymentWizardState? Load()
+    {
+        var json = HttpContext.Session.GetString(SessionKey);
+        return string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<PaymentWizardState>(json);
+    }
+
+    void Save(PaymentWizardState s) => HttpContext.Session.SetString(SessionKey, JsonSerializer.Serialize(s));
+    static string Normalize(string v) => (v ?? "").Trim().Replace("ي", "ی").Replace("ك", "ک").ToLowerInvariant();
+
+    public class ScoreEditItem { public int RowIndex { get; set; } public int ParameterId { get; set; } public decimal Score { get; set; } }
 }
