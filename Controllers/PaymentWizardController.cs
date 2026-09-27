@@ -150,24 +150,49 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
     static List<PaymentImportErrorGroup> CategorizeImportErrors(List<string> errors)
     {
-        var defs = new[]
+        // همه خطاهای یک بارگذاری در یک مجموعه واحد تجمیع می‌شوند.
+        // دسته‌بندی صریح است تا هر خطا فقط یک‌بار و در تب مناسب نمایش داده شود.
+        var groups = new[]
         {
-            ("format", "فرمت و ساختار فایل", new[] { "فایل Excel", "ستون", "فرمت", "Excel" }),
-            ("required", "اطلاعات ناقص و اجباری", new[] { "الزامی" }),
-            ("mapping", "ارتباط کالا و تامین‌کننده", new[] { "ارتباط فعال بین کالا", "قطعه–تامین‌کننده", "قطعه-تامین‌کننده" }),
-            ("parts", "کالاهای تعریف‌نشده", new[] { "کالا «" }),
-            ("suppliers", "تامین‌کنندگان تعریف‌نشده", new[] { "تامین‌کننده «" }),
-            ("amount", "خطاهای مبلغ", new[] { "مبلغ بدهی", "مبلغ" }),
-            ("date", "خطاهای تاریخ و بازه", new[] { "تاریخ", "بازه زمانی" }),
-            ("row", "خطاهای سطری و داده‌ای", new[] { "سطر" })
+            new PaymentImportErrorGroup { Key = "format", Title = "فرمت و ساختار فایل", Errors = [] },
+            new PaymentImportErrorGroup { Key = "parts", Title = "کالاهای تعریف‌نشده یا غیرفعال", Errors = [] },
+            new PaymentImportErrorGroup { Key = "suppliers", Title = "تامین‌کنندگان تعریف‌نشده یا غیرفعال", Errors = [] },
+            new PaymentImportErrorGroup { Key = "mapping", Title = "ارتباط‌های تعریف‌نشده کالا–تامین‌کننده", Errors = [] },
+            new PaymentImportErrorGroup { Key = "other", Title = "سایر خطاهای کنترل اطلاعات", Errors = [] }
         };
-        var groups = defs.Select(x => new PaymentImportErrorGroup { Key = x.Item1, Title = x.Item2, Errors = [] }).ToList();
-        foreach (var e in errors.Distinct(StringComparer.OrdinalIgnoreCase))
+
+        foreach (var error in errors
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var g = groups.FirstOrDefault(x => defs.First(d => d.Item1 == x.Key).Item3.Any(k => e.Contains(k, StringComparison.OrdinalIgnoreCase)));
-            (g ?? groups.Last()).Errors.Add(e);
+            ClassifyImportError(error, groups).Errors.Add(error);
         }
+
         return groups.Where(x => x.Errors.Count > 0).ToList();
+    }
+
+    static PaymentImportErrorGroup ClassifyImportError(string error, IReadOnlyList<PaymentImportErrorGroup> groups)
+    {
+        // اولویت کنترل‌ها مشخص است تا خطاهای ارتباط، کالا و تامین‌کننده
+        // به‌اشتباه در گروه فرمت یا خطاهای عمومی قرار نگیرند.
+        if (error.Contains("ستون", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("فایل Excel", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("فرمت", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("Excel", StringComparison.OrdinalIgnoreCase))
+            return groups.First(x => x.Key == "format");
+
+        if (error.Contains("ارتباط فعال بین کالا", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("قطعه–تامین‌کننده", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("قطعه-تامین‌کننده", StringComparison.OrdinalIgnoreCase))
+            return groups.First(x => x.Key == "mapping");
+
+        if (error.Contains("کالا «", StringComparison.OrdinalIgnoreCase))
+            return groups.First(x => x.Key == "parts");
+
+        if (error.Contains("تامین‌کننده «", StringComparison.OrdinalIgnoreCase))
+            return groups.First(x => x.Key == "suppliers");
+
+        return groups.First(x => x.Key == "other");
     }
 
     [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
