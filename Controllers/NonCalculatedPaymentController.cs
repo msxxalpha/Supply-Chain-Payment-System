@@ -133,6 +133,7 @@ public class NonCalculatedPaymentController(AppDbContext db, SupplierPrioritySer
                 ImportedRowCount = s.Suppliers.Count,
                 Notes = s.Notes,
                 Status = PaymentRunStatus.Approved,
+                FinancialEffectsAppliedAt = DateTime.UtcNow,
                 CreatedBy = UserId,
                 ApprovedBy = UserId,
                 ApprovedAt = DateTime.UtcNow,
