@@ -1,31 +1,145 @@
 @model List<Indamin.Payment.Data.SystemParameter>
 @using Indamin.Payment.Data
-@{ViewData["Title"]="پارامترهای سیستم";var calcInitial=Model.FirstOrDefault(x=>x.Code=="CALC_INITIAL_SHARE")?.Value??50m;var calcCurrent=Model.FirstOrDefault(x=>x.Code=="CALC_CURRENT_SHARE")?.Value??50m;var nonInitial=Model.FirstOrDefault(x=>x.Code=="NONCALC_INITIAL_SHARE")?.Value??50m;var nonCurrent=Model.FirstOrDefault(x=>x.Code=="NONCALC_CURRENT_SHARE")?.Value??50m;var minAge=Model.FirstOrDefault(x=>x.Code=="MIN_EFFECTIVE_DEBT_AGE")?.Value??0m;var minAmount=Model.FirstOrDefault(x=>x.Code=="MIN_ALLOCATION_AMOUNT")?.Value??0m;var rounding=Model.FirstOrDefault(x=>x.Code=="ALLOCATION_ROUNDING")?.Value??1000000m;};
-<div class="mb-3"><div class="nav nav-tabs"><a class="nav-link" href="/Setup/Parameters">پارامترهای پرداخت</a><a class="nav-link active" href="/Setup/SystemParameters">پارامترهای سیستم</a></div></div>
-<div class="page-header"><div><div class="eyebrow">اطلاعات پایه</div><h2>پارامترهای سیستم پرداخت</h2><p class="text-muted">پارامترهای زیر در محاسبه پرداخت‌های محاسباتی و غیرمحاسباتی استفاده می‌شوند و تغییر آنها در اجرای بعدی اثر خواهد داشت.</p></div></div>
+@{
+    ViewData["Title"] = "پارامترهای محاسبات سیستم";
+    var calcInitial = Model.FirstOrDefault(x=>x.Code=="CALC_INITIAL_SHARE")?.Value ?? 50m;
+    var calcCurrent = Model.FirstOrDefault(x=>x.Code=="CALC_CURRENT_SHARE")?.Value ?? 50m;
+    var nonInitial = Model.FirstOrDefault(x=>x.Code=="NONCALC_INITIAL_SHARE")?.Value ?? 50m;
+    var nonCurrent = Model.FirstOrDefault(x=>x.Code=="NONCALC_CURRENT_SHARE")?.Value ?? 50m;
+    var minAge = Model.FirstOrDefault(x=>x.Code=="MIN_EFFECTIVE_DEBT_AGE")?.Value ?? 0m;
+    var minAmount = Model.FirstOrDefault(x=>x.Code=="MIN_ALLOCATION_AMOUNT")?.Value ?? 1m;
+    var rounding = Model.FirstOrDefault(x=>x.Code=="ALLOCATION_ROUNDING")?.Value ?? 100000m;
+}
+<div class="mb-3">
+    <div class="nav nav-tabs">
+        <a class="nav-link" href="/Setup/Parameters">پارامترهای پرداخت</a>
+        <a class="nav-link active" href="/Setup/SystemParameters">پارامترهای محاسبات سیستم</a>
+    </div>
+</div>
+
+<div class="page-header">
+    <div>
+        <div class="eyebrow">اطلاعات پایه</div>
+        <h2>پارامترهای محاسبات سیستم</h2>
+        <p class="text-muted">این مقادیر منطق تخصیص پرداخت‌های محاسباتی و غیرمحاسباتی را کنترل می‌کنند. مقادیر موثر هر محاسبه نیز در Snapshot همان محاسبه ثبت می‌شود.</p>
+    </div>
+</div>
+
 <form method="post" action="/Setup/SaveSystemParameters" id="systemParametersForm">
 @Html.AntiForgeryToken()
 <div class="row g-3">
- <div class="col-lg-6"><div class="form-panel h-100"><div class="panel-title"><div><h4>سهم مطالبات در پرداخت محاسباتی</h4><span>جمع این دو درصد باید دقیقاً ۱۰۰٪ باشد.</span></div><span id="calcShareAlarm" class="validation-chip validation-ok">جمع: ۱۰۰٪</span></div><div class="row g-3">
-  <div class="col-6"><label class="form-label">درصد سهم مطالبات استقراری</label><div class="input-group"><input id="calcInitialShare" class="form-control system-percent" name="calcInitialShare" type="number" min="0" max="100" step="0.01" value="@calcInitial"><span class="input-group-text">٪</span></div></div>
-  <div class="col-6"><label class="form-label">درصد سهم مطالبات جاری</label><div class="input-group"><input id="calcCurrentShare" class="form-control system-percent" name="calcCurrentShare" type="number" min="0" max="100" step="0.01" value="@calcCurrent"><span class="input-group-text">٪</span></div></div>
- </div></div></div>
- <div class="col-lg-6"><div class="form-panel h-100"><div class="panel-title"><div><h4>سهم مطالبات در پرداخت غیرمحاسباتی</h4><span>جمع این دو درصد نیز باید دقیقاً ۱۰۰٪ باشد.</span></div><span id="nonCalcShareAlarm" class="validation-chip validation-ok">جمع: ۱۰۰٪</span></div><div class="row g-3">
-  <div class="col-6"><label class="form-label">درصد سهم مطالبات استقراری</label><div class="input-group"><input id="nonCalcInitialShare" class="form-control system-percent" name="nonCalcInitialShare" type="number" min="0" max="100" step="0.01" value="@nonInitial"><span class="input-group-text">٪</span></div></div>
-  <div class="col-6"><label class="form-label">درصد سهم مطالبات جاری</label><div class="input-group"><input id="nonCalcCurrentShare" class="form-control system-percent" name="nonCalcCurrentShare" type="number" min="0" max="100" step="0.01" value="@nonCurrent"><span class="input-group-text">٪</span></div></div>
- </div></div></div>
- <div class="col-lg-4"><div class="form-panel h-100"><label class="form-label">کمترین حد سن بدهی موثر</label><div class="input-group"><input class="form-control" name="minEffectiveDebtAge" type="number" min="0" step="1" value="@minAge"><span class="input-group-text">روز</span></div><div class="form-hint mt-2">فقط رسیدهایی که سن بدهی آنها <b>بیشتر از</b> این مقدار باشد وارد تخصیص محاسباتی می‌شوند.</div></div></div>
- <div class="col-lg-4"><div class="form-panel h-100"><label class="form-label">حداقل مبلغ ریالی تخصیص</label><div class="input-group"><input class="form-control" name="minAllocationAmount" type="number" min="0" step="1" value="@minAmount"><span class="input-group-text">ریال</span></div><div class="form-hint mt-2">مبلغ محاسبه‌شده کمتر از این حد از تخصیص حذف می‌شود و بودجه به گزینه‌های دیگر منتقل می‌گردد.</div></div></div>
- <div class="col-lg-4"><div class="form-panel h-100"><label class="form-label">رندینگ مبلغ تخصیص</label><div class="input-group"><input class="form-control" name="allocationRounding" type="number" min="1" step="1" value="@rounding"><span class="input-group-text">ریال</span></div><div class="form-hint mt-2">مبلغ نهایی هر رسید باید مضربی از این مقدار باشد.</div></div></div>
+    <div class="col-xl-7">
+        <div class="form-panel h-100">
+            <div class="panel-title">
+                <div><h4>پارامترهای پرداخت محاسباتی</h4><span>سهم استقراری + سهم جاری باید دقیقاً ۱۰۰٪ باشد.</span></div>
+                <span id="calcShareAlarm" class="validation-chip validation-ok">جمع: ۱۰۰٪</span>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">درصد سهم مطالبات استقراری</label>
+                    <div class="input-group"><input id="calcInitialShare" class="form-control system-percent" name="calcInitialShare" type="number" min="0" max="100" step="0.01" value="@calcInitial"><span class="input-group-text">٪</span></div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">درصد سهم مطالبات جاری</label>
+                    <div class="input-group"><input id="calcCurrentShare" class="form-control system-percent" name="calcCurrentShare" type="number" min="0" max="100" step="0.01" value="@calcCurrent"><span class="input-group-text">٪</span></div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">حداقل سن بدهی موثر</label>
+                    <div class="input-group"><input class="form-control" name="minEffectiveDebtAge" type="number" min="0" step="1" value="@minAge"><span class="input-group-text">روز</span></div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">حداقل مبلغ قابل تخصیص به هر رسید</label>
+                    <div class="input-group"><input class="form-control" name="minAllocationAmount" type="number" min="0" step="1" value="@minAmount"><span class="input-group-text">ریال</span></div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">ضریب مبلغ محاسباتی</label>
+                    <div class="input-group"><input class="form-control" name="allocationRounding" type="number" min="1" step="1" value="@rounding"><span class="input-group-text">ریال</span></div>
+                </div>
+            </div>
+            <div class="form-hint mt-3">رسید فقط وقتی واجد تخصیص است که سن بدهی آن <b>بیشتر از</b> حداقل سن موثر باشد. مبلغ تخصیص هر رسید نیز باید <b>بیشتر از</b> حداقل مبلغ و مضربی از ضریب مبلغ محاسباتی باشد.</div>
+        </div>
+    </div>
+
+    <div class="col-xl-5">
+        <div class="form-panel h-100">
+            <div class="panel-title">
+                <div><h4>پارامترهای پرداخت غیرمحاسباتی</h4><span>سهم استقراری + سهم جاری باید دقیقاً ۱۰۰٪ باشد.</span></div>
+                <span id="nonCalcShareAlarm" class="validation-chip validation-ok">جمع: ۱۰۰٪</span>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">درصد سهم مطالبات استقراری</label>
+                    <div class="input-group"><input id="nonCalcInitialShare" class="form-control system-percent" name="nonCalcInitialShare" type="number" min="0" max="100" step="0.01" value="@nonInitial"><span class="input-group-text">٪</span></div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">درصد سهم مطالبات جاری</label>
+                    <div class="input-group"><input id="nonCalcCurrentShare" class="form-control system-percent" name="nonCalcCurrentShare" type="number" min="0" max="100" step="0.01" value="@nonCurrent"><span class="input-group-text">٪</span></div>
+                </div>
+            </div>
+            <div class="form-hint mt-3">این دو پارامتر در ثبت پرداخت غیرمحاسباتی برای تفکیک منابع مطالبات استفاده می‌شوند.</div>
+        </div>
+    </div>
 </div>
-<div class="form-panel mt-3"><div class="panel-title"><div><h4>مقادیر فعال سیستم</h4><span>این موارد در زمان ثبت Snapshot هر محاسبه نیز نگهداری خواهند شد.</span></div></div><div class="table-responsive"><table class="table modern-table"><thead><tr><th>عنوان</th><th>نوع</th><th>مقدار</th><th>واحد</th></tr></thead><tbody>@foreach(var x in Model.OrderBy(x=>x.SortOrder)){<tr><td class="fw-bold">@x.Title</td><td>@(x.ValueType==SystemParameterValueType.Percentage?"درصد":x.ValueType==SystemParameterValueType.Amount?"مبلغ":"عدد")</td><td>@x.Value.ToString("N0")</td><td>@x.Unit</td></tr>}</tbody></table></div></div>
-<div class="step-actions"><span id="systemParameterFormMessage" class="subtle"></span><button id="saveSystemParametersButton" type="submit" class="btn btn-main btn-lg">ذخیره پارامترهای سیستم</button></div>
+
+<div class="form-panel mt-3">
+    <div class="panel-title">
+        <div><h4>مقادیر فعال سیستم</h4><span>تغییرات از اجرای محاسبه بعدی اعمال می‌شوند؛ مقادیر قبلی از طریق Snapshot قابل مشاهده‌اند.</span></div>
+    </div>
+    <div class="table-responsive">
+        <table class="table modern-table">
+            <thead><tr><th>عنوان</th><th>نوع</th><th>مقدار</th><th>واحد</th></tr></thead>
+            <tbody>
+            @foreach(var x in Model.OrderBy(x=>x.SortOrder))
+            {
+                <tr>
+                    <td class="fw-bold">@x.Title</td>
+                    <td>@(x.ValueType==SystemParameterValueType.Percentage?"درصد":x.ValueType==SystemParameterValueType.Amount?"مبلغ":"عدد")</td>
+                    <td>@x.Value.ToString("N0")</td>
+                    <td>@x.Unit</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="step-actions">
+    <span id="systemParameterFormMessage" class="subtle"></span>
+    <button id="saveSystemParametersButton" type="submit" class="btn btn-main btn-lg">ذخیره پارامترهای محاسبات سیستم</button>
+</div>
 </form>
+
 <script>
 (function(){
- const pairs=[["calcInitialShare","calcCurrentShare","calcShareAlarm"],["nonCalcInitialShare","nonCalcCurrentShare","nonCalcShareAlarm"]];
- function refresh(a,b,label){const x=Number(document.getElementById(a).value||0),y=Number(document.getElementById(b).value||0),sum=Math.round((x+y)*100)/100;const el=document.getElementById(label);el.textContent="جمع: "+sum.toLocaleString("fa-IR")+"٪";el.classList.toggle("validation-ok",Math.abs(sum-100)<0.0001);el.classList.toggle("validation-bad",Math.abs(sum-100)>=0.0001);}
- pairs.forEach(p=>document.getElementById(p[0]).addEventListener("input",()=>refresh(...p)));pairs.forEach(p=>document.getElementById(p[1]).addEventListener("input",()=>refresh(...p)));pairs.forEach(p=>refresh(...p));
- document.getElementById("systemParametersForm").addEventListener("submit",e=>{const ok=pairs.every(p=>{const x=Number(document.getElementById(p[0]).value||0),y=Number(document.getElementById(p[1]).value||0);return Math.abs(x+y-100)<0.0001});if(!ok){e.preventDefault();document.getElementById("systemParameterFormMessage").textContent="ثبت مجاز نیست؛ مجموع سهم‌های هر نوع پرداخت باید دقیقاً ۱۰۰٪ باشد.";document.getElementById("systemParameterFormMessage").classList.add("text-danger");}});
+    const pairs = [
+        ["calcInitialShare","calcCurrentShare","calcShareAlarm"],
+        ["nonCalcInitialShare","nonCalcCurrentShare","nonCalcShareAlarm"]
+    ];
+    function refresh(a,b,label){
+        const x = Number(document.getElementById(a).value || 0);
+        const y = Number(document.getElementById(b).value || 0);
+        const sum = Math.round((x+y)*100)/100;
+        const el = document.getElementById(label);
+        el.textContent = "جمع: " + sum.toLocaleString("fa-IR") + "٪";
+        el.classList.toggle("validation-ok", Math.abs(sum-100) < 0.0001);
+        el.classList.toggle("validation-bad", Math.abs(sum-100) >= 0.0001);
+    }
+    pairs.forEach(p => {
+        document.getElementById(p[0]).addEventListener("input",()=>refresh(...p));
+        document.getElementById(p[1]).addEventListener("input",()=>refresh(...p));
+        refresh(...p);
+    });
+    document.getElementById("systemParametersForm").addEventListener("submit",e=>{
+        const ok = pairs.every(p => {
+            const x = Number(document.getElementById(p[0]).value || 0);
+            const y = Number(document.getElementById(p[1]).value || 0);
+            return x >= 0 && y >= 0 && x <= 100 && y <= 100 && Math.abs(x+y-100) < 0.0001;
+        });
+        if(!ok){
+            e.preventDefault();
+            document.getElementById("systemParameterFormMessage").textContent = "ثبت مجاز نیست؛ مجموع سهم‌های هر نوع پرداخت باید دقیقاً ۱۰۰٪ باشد.";
+            document.getElementById("systemParameterFormMessage").classList.add("text-danger");
+        }
+    });
 })();
 </script>
