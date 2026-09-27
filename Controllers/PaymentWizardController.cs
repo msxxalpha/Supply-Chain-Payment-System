@@ -732,8 +732,12 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         try
         {
             var run = await db.PaymentRuns.Include(x => x.SupplierSummaries).SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
-            if (run == null) throw new InvalidOperationException("محاسبه یافت نشد.");
-            if (run.Status != PaymentRunStatus.Approved) throw new InvalidOperationException("پرداخت پس از تبدیل به دستور پرداخت قابل حذف نیست.");
+            if (run == null) throw new InvalidOperationException("پرداخت یافت نشد.");
+            var isPaymentOrdered = run.Status == PaymentRunStatus.PaymentOrdered;
+            if (run.Status != PaymentRunStatus.Approved && !isPaymentOrdered)
+                throw new InvalidOperationException("فقط پرداخت تاییدشده یا دستورپرداخت‌شده قابل حذف منطقی است.");
+            if (isPaymentOrdered && !User.HasClaim("IsAdmin", "1"))
+                throw new InvalidOperationException("حذف دستور پرداخت فقط برای مدیر سامانه مجاز است.");
 
             if (run.FinancialEffectsAppliedAt.HasValue)
             {
@@ -749,6 +753,19 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
                         .Select(x => new { x.PaymentRunId, x.ReceiptNo }).Take(10).ToListAsync();
                     if (dependent.Count > 0)
                         throw new InvalidOperationException("این پرداخت قبلاً اثر مالی داشته و در محاسبات بعدی مورد استفاده قرار گرفته است؛ ابتدا محاسبات بعدی وابسته را حذف کنید.");
+                }
+
+                var initialSupplierIds = run.SupplierSummaries
+                    .Where(x => x.InitialClaimAllocatedAmount > 0)
+                    .Select(x => x.SupplierId).Distinct().ToList();
+                if (initialSupplierIds.Count > 0)
+                {
+                    var laterInitial = await db.PaymentRunSupplierSummaries
+                        .Where(x => !x.PaymentRun!.IsDeleted && x.PaymentRunId > id &&
+                                    initialSupplierIds.Contains(x.SupplierId) && x.InitialClaimAllocatedAmount > 0)
+                        .Select(x => x.PaymentRunId).Take(10).ToListAsync();
+                    if (laterInitial.Count > 0)
+                        throw new InvalidOperationException("این پرداخت از مطالبات استقراری استفاده کرده و در پرداخت‌های بعدی همان تامین‌کننده نیز استفاده شده است؛ ابتدا پرداخت‌های بعدی وابسته را حذف کنید.");
                 }
 
                 foreach (var summary in run.SupplierSummaries.Where(x => x.InitialClaimAllocatedAmount > 0))
@@ -783,7 +800,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             });
             await db.SaveChangesAsync();
             await tx.CommitAsync();
-            TempData["Result"] = $"پرداخت شماره {run.Id} حذف منطقی شد و آثار آن به‌صورت تراکنشی برگشت داده شد.";
+            TempData["Result"] = $"پرداخت شماره {run.Id} حذف منطقی شد؛ سابقه آن حفظ و آثار مالی فعال آن از محاسبات بعدی خارج شد.";
             return RedirectToAction(nameof(History));
         }
         catch (Exception ex)
