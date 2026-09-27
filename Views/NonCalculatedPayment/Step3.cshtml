@@ -1,0 +1,130 @@
+@model Indamin.Payment.Data.NonCalculatedPaymentWizardState
+@using Indamin.Payment.Data
+@{
+    ViewData["Title"] = "پرداخت غیرمحاسباتی؛ پیش‌نمایش نهایی";
+    var supplierGroups = Model.Suppliers
+        .GroupBy(x => new { x.SupplierId, x.SupplierTitle })
+        .Select(g => new
+        {
+            g.Key.SupplierId,
+            g.Key.SupplierTitle,
+            Lines = g.ToList(),
+            Requested = g.Sum(x => x.Amount),
+            Initial = g.Sum(x => x.CalculatedInitialClaimAmount),
+            Current = g.Sum(x => x.CalculatedCurrentClaimAmount),
+            Total = g.Sum(x => x.CalculatedAllocatedAmount),
+            InitialBefore = g.First().InitialClaimAtPreview,
+            CurrentBefore = g.First().CurrentDebtAtPreview
+        })
+        .OrderByDescending(x => x.Total)
+        .ThenBy(x => x.SupplierTitle)
+        .ToList();
+    var total = Model.Suppliers.Sum(x => x.CalculatedAllocatedAmount);
+    var initial = Model.Suppliers.Sum(x => x.CalculatedInitialClaimAmount);
+    var current = Model.Suppliers.Sum(x => x.CalculatedCurrentClaimAmount);
+}
+<div class="wizard-steps">
+    <div class="wizard-step done"><span class="num">✓</span><div><b>انتخاب تامین‌کنندگان</b><small>@Model.Suppliers.Count آیتم</small></div></div>
+    <div class="wizard-step done"><span class="num">✓</span><div><b>ثبت اقلام پرداخت</b><small>تکمیل شد</small></div></div>
+    <div class="wizard-step active"><span class="num">۳</span><div><b>پیش‌نمایش و ثبت نهایی</b><small>کنترل منابع و صدور دستور پرداخت</small></div></div>
+</div>
+
+<div class="page-header">
+    <div>
+        <div class="eyebrow">پرداخت غیرمحاسباتی</div>
+        <h2>پیش‌نمایش نهایی و صدور دستور پرداخت</h2>
+        <p class="text-muted">مبالغ زیر بر اساس Snapshot پارامترهای سهم استقراری و جاری محاسبه شده‌اند و در زمان ثبت نهایی، مانده‌های واقعی دوباره کنترل می‌شوند.</p>
+    </div>
+</div>
+
+<div class="payment-kpi-grid mb-3">
+    <div class="payment-kpi"><span>کل مبلغ پرداخت</span><strong>@total.ToString("N0")</strong><small>ریال</small></div>
+    <div class="payment-kpi"><span>سهم مطالبات استقراری</span><strong>@initial.ToString("N0")</strong><small>@Model.NonCalculatedInitialSharePercent.ToString("0.##")٪ مبنا</small></div>
+    <div class="payment-kpi"><span>سهم مطالبات جاری</span><strong>@current.ToString("N0")</strong><small>@Model.NonCalculatedCurrentSharePercent.ToString("0.##")٪ مبنا</small></div>
+    <div class="payment-kpi"><span>تعداد تامین‌کنندگان یکتا</span><strong>@supplierGroups.Count</strong><small>@Model.Suppliers.Count آیتم پرداخت</small></div>
+</div>
+
+<div class="info-box mb-3">
+    <b>کنترل نهایی:</b> مبلغ هر تامین‌کننده بین دو منبع مطالبات تفکیک شده است. در صورت کمبود هر منبع، سهم باقیمانده به منبع دیگر منتقل شده است. پس از ثبت نهایی، مبلغ استقراری از مانده استقراری تامین‌کننده و مبلغ جاری از مانده رسیدهای همان تامین‌کننده کسر و سابقه آن ثبت می‌شود.
+</div>
+
+<div class="table-panel mb-3">
+    <div class="panel-title">
+        <div><h4>خلاصه تامین‌کنندگان</h4><span>تجمیع آیتم‌های تکراری یک تامین‌کننده برای اثر مالی نهایی</span></div>
+        <span class="validation-chip validation-ok">آماده ثبت نهایی</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table modern-table align-middle">
+            <thead><tr><th>تامین‌کننده</th><th>تعداد آیتم</th><th>استقراری قبل</th><th>جاری قبل</th><th>سهم استقراری</th><th>سهم جاری</th><th>مجموع نهایی</th></tr></thead>
+            <tbody>
+            @foreach(var x in supplierGroups)
+            {
+                <tr>
+                    <td class="fw-bold">@x.SupplierTitle</td>
+                    <td>@x.Lines.Count</td>
+                    <td>@x.InitialBefore.ToString("N0")</td>
+                    <td>@x.CurrentBefore.ToString("N0")</td>
+                    <td>@x.Initial.ToString("N0")</td>
+                    <td>@x.Current.ToString("N0")</td>
+                    <td class="amount-emphasis">@x.Total.ToString("N0")</td>
+                </tr>
+            }
+            </tbody>
+            <tfoot><tr><th colspan="2">جمع</th><th></th><th></th><th>@initial.ToString("N0")</th><th>@current.ToString("N0")</th><th>@total.ToString("N0")</th></tr></tfoot>
+        </table>
+    </div>
+</div>
+
+<div class="table-panel mb-3">
+    <div class="panel-title">
+        <div><h4>Snapshot اقلام ثبت‌شده</h4><span>این جدول عیناً به‌عنوان سابقه اقلام پرداخت در زمان صدور دستور پرداخت ذخیره خواهد شد.</span></div>
+    </div>
+    <div class="table-responsive table-scroll">
+        <table class="table modern-table align-middle">
+            <thead><tr><th>ردیف</th><th>تامین‌کننده</th><th>نوع پرداخت</th><th>مبلغ درخواست</th><th>استقراری</th><th>جاری</th><th>مجموع</th><th>توضیحات</th></tr></thead>
+            <tbody>
+            @for(var i=0;i<Model.Suppliers.Count;i++)
+            {
+                var x=Model.Suppliers[i];
+                <tr>
+                    <td>@(i+1)</td>
+                    <td class="fw-bold">@x.SupplierTitle</td>
+                    <td>@PaymentTypeTitle(x.PaymentType)</td>
+                    <td>@x.Amount.ToString("N0")</td>
+                    <td>@x.CalculatedInitialClaimAmount.ToString("N0")</td>
+                    <td>@x.CalculatedCurrentClaimAmount.ToString("N0")</td>
+                    <td class="amount-emphasis">@x.CalculatedAllocatedAmount.ToString("N0")</td>
+                    <td>@(string.IsNullOrWhiteSpace(x.Description) ? "—" : x.Description)</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<form method="post" action="/NonCalculatedPayment/Finalize" id="nonCalcFinalizeForm">
+    @Html.AntiForgeryToken()
+    <div class="step-actions">
+        <a class="btn btn-outline-secondary" href="/NonCalculatedPayment/Step2">← بازگشت و اصلاح اقلام</a>
+        <span class="subtle">ثبت این فرم، پرداخت را به وضعیت «دستور پرداخت شده» می‌برد و آثار مالی را ثبت می‌کند.</span>
+        <button class="btn btn-main btn-lg" type="submit">ثبت نهایی و صدور دستور پرداخت ✓</button>
+    </div>
+</form>
+
+@functions {
+    string PaymentTypeTitle(NonCalculatedPaymentType type) => type switch
+    {
+        NonCalculatedPaymentType.Cash => "نقدی",
+        NonCalculatedPaymentType.CheckTransfer => "واگذاری چک",
+        NonCalculatedPaymentType.VehicleTransfer => "واگذاری خودرو",
+        NonCalculatedPaymentType.RawMaterialTransfer => "واگذاری مواداولیه",
+        NonCalculatedPaymentType.IntroductionLetter => "معرفی نامه",
+        NonCalculatedPaymentType.CreditLimit => "حد اعتباری",
+        _ => "نامشخص"
+    };
+}
+<script>
+document.getElementById("nonCalcFinalizeForm").addEventListener("submit",function(e){
+    if(!confirm("پس از ثبت نهایی، دستور پرداخت صادر و آثار مالی آن ثبت می‌شود و امکان ویرایش این پرداخت وجود نخواهد داشت. ادامه می‌دهید؟")) e.preventDefault();
+});
+</script>
