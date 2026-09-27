@@ -1,0 +1,32 @@
+@model Indamin.Payment.Data.NonCalculatedPaymentWizardState
+@using Indamin.Payment.Data
+@{ViewData["Title"]="پرداخت غیرمحاسباتی؛ انتخاب تامین‌کنندگان";}
+<div class="wizard-steps"><div class="wizard-step active"><span class="num">۱</span><div><b>انتخاب تامین‌کنندگان</b><small>اولویت تحلیلی و تشکیل فهرست</small></div></div><div class="wizard-step"><span class="num">۲</span><div><b>نوع و مبلغ پرداخت</b><small>بررسی و تایید نهایی</small></div></div></div>
+<div class="page-header"><div><div class="eyebrow">پرداخت غیرمحاسباتی</div><h2>انتخاب تامین‌کنندگان مشمول پرداخت</h2><p class="text-muted">تامین‌کنندگان سمت راست براساس همان شاخص تحلیلی داشبورد مرتب شده‌اند. سطر را انتخاب و با فلش به فهرست سمت چپ منتقل کنید.</p></div><a class="btn btn-outline-secondary" href="/PaymentWizard/History">سوابق پرداخت‌ها</a></div>
+<form method="post" action="/NonCalculatedPayment/Step1" id="nonCalcStep1Form">
+@Html.AntiForgeryToken()
+<div class="form-panel mb-3"><div class="row g-3"><div class="col-lg-5"><label class="form-label">عنوان پرداخت</label><input class="form-control" name="title" value="@Model.Title" required></div><div class="col-lg-3"><label class="form-label">تاریخ ثبت پرداخت</label><div class="jalali-input"><input class="form-control" data-jalali-date name="paymentDateJalali" value="@Model.PaymentDateJalali" autocomplete="off" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div><div class="col-lg-4"><label class="form-label">توضیحات</label><input class="form-control" name="notes" value="@Model.Notes"></div></div></div>
+<div class="row g-3">
+ <div class="col-xl-5"><div class="table-panel h-100"><div class="panel-title"><div><h4>فهرست منتخب برای پرداخت</h4><span>با فلش برگشت می‌توانید انتخاب را اصلاح کنید.</span></div><span id="selectedCount" class="validation-chip">۰ تامین‌کننده</span></div><div class="table-responsive"><table class="table modern-table" id="selectedSuppliers"><thead><tr><th>تامین‌کننده</th><th>استقراری</th><th>مانده جاری</th><th>مجموع</th></tr></thead><tbody></tbody></table></div></div></div>
+ <div class="col-xl-1 d-flex flex-xl-column justify-content-center align-items-center gap-2"><button type="button" id="moveSelected" class="btn btn-main btn-lg" title="انتقال به فهرست منتخب">←</button><button type="button" id="removeSelected" class="btn btn-outline-secondary btn-lg" title="بازگرداندن به فهرست اولویت">→</button></div>
+ <div class="col-xl-6"><div class="table-panel h-100"><div class="panel-title"><div><h4>اولویت تامین‌کنندگان</h4><span>اولویت بالاتر یعنی توجه تحلیلی بیشتر در داشبورد</span></div></div><div class="table-responsive table-scroll"><table class="table modern-table" id="availableSuppliers"><thead><tr><th>تامین‌کننده</th><th>شاخص</th><th>استقراری</th><th>جاری</th><th>مجموع</th></tr></thead><tbody>
+@foreach(var x in Model.AvailableSuppliers){<tr data-id="@x.SupplierId" data-title="@x.SupplierTitle" data-initial="@x.InitialClaimAmount" data-current="@x.CurrentDebt"><td class="fw-bold">@x.SupplierTitle</td><td><span class="priority-pill">@x.Priority</span></td><td>@x.InitialClaimAmount.ToString("N0")</td><td>@x.CurrentDebt.ToString("N0")</td><td class="amount-emphasis">@x.TotalDebt.ToString("N0")</td></tr>}
+</tbody></table></div></div></div>
+</div>
+<div id="selectedHiddenFields"></div>
+<div class="step-actions"><span class="subtle">انتخاب حداقل یک تامین‌کننده برای ادامه الزامی است.</span><button id="continueNonCalc" type="submit" class="btn btn-main btn-lg">ادامه به تعیین نوع و مبلغ پرداخت ←</button></div>
+</form>
+<script>
+(function(){
+ const available=document.querySelector("#availableSuppliers tbody"),selected=document.querySelector("#selectedSuppliers tbody"),hidden=document.getElementById("selectedHiddenFields"),count=document.getElementById("selectedCount"),selectedMap=new Map();
+ function num(v){return Number(v||0).toLocaleString("fa-IR",{maximumFractionDigits:0});}
+ function refresh(){count.textContent=selectedMap.size.toLocaleString("fa-IR")+" تامین‌کننده";hidden.innerHTML="";selectedMap.forEach((x,id)=>{const i=document.createElement("input");i.type="hidden";i.name="supplierIds";i.value=id;hidden.appendChild(i);});}
+ function clearSelection(){document.querySelectorAll("#availableSuppliers tbody tr, #selectedSuppliers tbody tr").forEach(r=>r.classList.remove("table-active"));}
+ available.addEventListener("click",e=>{const row=e.target.closest("tr");if(row){clearSelection();row.classList.add("table-active");}});
+ selected.addEventListener("click",e=>{const row=e.target.closest("tr");if(row){clearSelection();row.classList.add("table-active");}});
+ document.getElementById("moveSelected").addEventListener("click",()=>{const row=available.querySelector("tr.table-active");if(!row)return;const id=row.dataset.id;if(selectedMap.has(id))return;const x={id,title:row.dataset.title,initial:Number(row.dataset.initial||0),current:Number(row.dataset.current||0)};selectedMap.set(id,x);const tr=document.createElement("tr");tr.dataset.id=id;tr.innerHTML="<td class='fw-bold'>"+x.title+"</td><td>"+num(x.initial)+"</td><td>"+num(x.current)+"</td><td class='amount-emphasis'>"+num(x.initial+x.current)+"</td>";selected.appendChild(tr);row.remove();refresh();});
+ document.getElementById("removeSelected").addEventListener("click",()=>{const row=selected.querySelector("tr.table-active");if(!row)return;const id=row.dataset.id,x=selectedMap.get(id);selectedMap.delete(id);const tr=document.createElement("tr");tr.dataset.id=id;tr.dataset.title=x.title;tr.dataset.initial=x.initial;tr.dataset.current=x.current;tr.innerHTML="<td class='fw-bold'>"+x.title+"</td><td><span class='priority-pill'>-</span></td><td>"+num(x.initial)+"</td><td>"+num(x.current)+"</td><td class='amount-emphasis'>"+num(x.initial+x.current)+"</td>";available.appendChild(tr);refresh();});
+ document.getElementById("nonCalcStep1Form").addEventListener("submit",e=>{if(selectedMap.size===0){e.preventDefault();alert("حداقل یک تامین‌کننده را انتخاب کنید.");}});
+ refresh();
+})();
+</script>
