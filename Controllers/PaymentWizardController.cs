@@ -416,22 +416,6 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
                     RequestedAmount = totalAllocated,
                     AllocationPercent = totalAssigned > 0 ? Math.Round(totalAllocated / totalAssigned, 8) : 0
                 });
-                if (initialAllocated > 0)
-                {
-                    supplier.InitialClaimAmount = Math.Round(initialBefore - initialAllocated, 2);
-                    db.SupplierClaimHistories.Add(new SupplierClaimHistory
-                    {
-                        SupplierId = supplier.Id,
-                        ClaimType = SupplierClaimType.Initial,
-                        AmountBefore = initialBefore,
-                        AmountChange = -initialAllocated,
-                        AmountAfter = supplier.InitialClaimAmount,
-                        PaymentRunId = run.Id,
-                        Reference = $"کاهش مطالبات استقراری بابت پرداخت محاسباتی شماره {run.Id}",
-                        EffectiveDateJalali = s.CalculationDateJalali,
-                        UserId = UserId
-                    });
-                }
             }
             await db.SaveChangesAsync();
 
@@ -621,23 +605,92 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         try
         {
-            var run = await db.PaymentRuns.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+            var run = await db.PaymentRuns
+                .Include(x => x.SupplierSummaries)
+                .Include(x => x.Invoices)
+                .SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+
             if (run == null) throw new InvalidOperationException("محاسبه یافت نشد.");
-            if (run.Status != PaymentRunStatus.Approved) throw new InvalidOperationException("فقط پرداخت تاییدشده را می‌توان به دستور پرداخت تبدیل کرد.");
+            if (run.Status != PaymentRunStatus.Approved)
+                throw new InvalidOperationException("فقط محاسبه تاییدشده را می‌توان به دستور پرداخت تبدیل کرد.");
+
             var user = await db.Users.FindAsync(UserId);
+            var alreadyApplied = run.FinancialEffectsAppliedAt.HasValue;
+
+            if (!alreadyApplied)
+            {
+                // از آنجا که محاسبه تاییدشده هنوز اثر مالی ندارد، هنگام دستور پرداخت
+                // باید آخرین مانده جاری هر رسید و مطالبات استقراری تامین‌کننده دوباره کنترل شود.
+                var previous = await calc.PreviousCurrentAsync();
+                var supplierIds = run.SupplierSummaries.Select(x => x.SupplierId).Distinct().ToList();
+                var suppliers = await db.Suppliers.Where(x => supplierIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+
+                foreach (var summary in run.SupplierSummaries)
+                {
+                    if (!suppliers.TryGetValue(summary.SupplierId, out var supplier))
+                        throw new InvalidOperationException($"تامین‌کننده «{summary.SupplierTitle}» یافت نشد.");
+
+                    if (Math.Abs(supplier.InitialClaimAmount - summary.InitialClaimBefore) > .005m)
+                        throw new InvalidOperationException($"مطالبات استقراری تامین‌کننده «{supplier.Title}» از زمان تایید محاسبه تغییر کرده است؛ ابتدا محاسبه را مجدداً ایجاد کنید.");
+
+                    if (summary.InitialClaimAllocatedAmount < 0 ||
+                        summary.InitialClaimAllocatedAmount > supplier.InitialClaimAmount + .005m)
+                        throw new InvalidOperationException($"تخصیص استقراری تامین‌کننده «{supplier.Title}» از مانده مطالبات استقراری او بیشتر است.");
+                }
+
+                foreach (var row in run.Invoices)
+                {
+                    var keyPrevious = previous.GetValueOrDefault(row.PaymentKeyHash);
+                    if (Math.Abs(keyPrevious - row.PreviousAllocated) > .005m)
+                        throw new InvalidOperationException($"مانده جاری رسید «{row.ReceiptNo}» پس از تایید محاسبه تغییر کرده است؛ قبل از دستور پرداخت، محاسبه را مجدداً انجام دهید.");
+
+                    var liveRemaining = Math.Max(0, row.OriginalDebt - keyPrevious);
+                    if (row.AllocatedCurrentAmount < 0 || row.AllocatedCurrentAmount > liveRemaining + .005m)
+                        throw new InvalidOperationException($"تخصیص جاری رسید «{row.ReceiptNo}» از مانده جاری واقعی آن بیشتر است.");
+                }
+
+                foreach (var summary in run.SupplierSummaries.Where(x => x.InitialClaimAllocatedAmount > 0))
+                {
+                    var supplier = suppliers[summary.SupplierId];
+                    var before = supplier.InitialClaimAmount;
+                    supplier.InitialClaimAmount = Math.Round(before - summary.InitialClaimAllocatedAmount, 2);
+
+                    db.SupplierClaimHistories.Add(new SupplierClaimHistory
+                    {
+                        SupplierId = supplier.Id,
+                        ClaimType = SupplierClaimType.Initial,
+                        AmountBefore = before,
+                        AmountChange = -summary.InitialClaimAllocatedAmount,
+                        AmountAfter = supplier.InitialClaimAmount,
+                        PaymentRunId = run.Id,
+                        Reference = $"کاهش مطالبات استقراری بابت دستور پرداخت محاسباتی شماره {run.Id}",
+                        EffectiveDateJalali = run.CalculationDateJalali,
+                        UserId = UserId
+                    });
+                }
+
+                run.FinancialEffectsAppliedAt = DateTime.UtcNow;
+            }
+
             run.Status = PaymentRunStatus.PaymentOrdered;
-            run.PaymentOrderNumber = $"DP-{run.Id:000000}";
-            run.PaymentOrderedAt = DateTime.UtcNow;
+            run.PaymentOrderNumber ??= $"DP-{run.Id:000000}";
+            run.PaymentOrderedAt ??= DateTime.UtcNow;
             run.PaymentOrderedBy = UserId;
             run.PaymentOrderApproverNameSnapshot = user?.DisplayName ?? UserDisplayName;
+
             db.AuditLogs.Add(new AuditLog
             {
-                Action = "PAYMENT_ORDER", Entity = "PaymentRun", EntityId = run.Id.ToString(),
-                Details = $"تبدیل پرداخت شماره {run.Id} به دستور پرداخت {run.PaymentOrderNumber}", UserId = UserId
+                Action = "PAYMENT_ORDER",
+                Entity = "PaymentRun",
+                EntityId = run.Id.ToString(),
+                Details = $"تبدیل پرداخت شماره {run.Id} به دستور پرداخت {run.PaymentOrderNumber}؛ اثر مالی در زمان دستور پرداخت اعمال شد.",
+                UserId = UserId
             });
+
             await db.SaveChangesAsync();
             await tx.CommitAsync();
-            TempData["Result"] = $"پرداخت شماره {run.Id} به دستور پرداخت {run.PaymentOrderNumber} تبدیل شد و از این پس غیرقابل ویرایش است.";
+
+            TempData["Result"] = $"پرداخت شماره {run.Id} به دستور پرداخت {run.PaymentOrderNumber} تبدیل شد؛ مانده مطالبات استقراری و جاری از این لحظه در محاسبات بعدی لحاظ خواهد شد.";
             return RedirectToAction(nameof(History));
         }
         catch (Exception ex)
@@ -672,40 +725,40 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             if (run == null) throw new InvalidOperationException("محاسبه یافت نشد.");
             if (run.Status != PaymentRunStatus.Approved) throw new InvalidOperationException("پرداخت پس از تبدیل به دستور پرداخت قابل حذف نیست.");
 
-            var keys = await db.PaymentRunInvoices.Where(x => x.PaymentRunId == id && x.AllocatedCurrentAmount > 0 || x.PaymentRunId == id && x.AllocatedCurrentAmount == 0 && x.AllocatedInitialClaimAmount == 0 && x.AllocatedAmount > 0)
-                .Select(x => x.PaymentKeyHash).ToListAsync();
-            if (keys.Count > 0)
+            if (run.FinancialEffectsAppliedAt.HasValue)
             {
-                var dependent = await db.PaymentRunInvoices.Where(x => !x.PaymentRun!.IsDeleted && x.PaymentRunId > id && keys.Contains(x.PaymentKeyHash) && x.PreviousAllocated > 0)
-                    .Select(x => new { x.PaymentRunId, x.ReceiptNo }).Take(10).ToListAsync();
-                if (dependent.Count > 0) throw new InvalidOperationException("این پرداخت در محاسبات بعدی مورد استفاده قرار گرفته است؛ ابتدا محاسبات بعدی وابسته را حذف کنید.");
-            }
+                var keys = await db.PaymentRunInvoices
+                    .Where(x => x.PaymentRunId == id && x.AllocatedCurrentAmount > 0)
+                    .Select(x => x.PaymentKeyHash).ToListAsync();
 
-            var initialSupplierIds = run.SupplierSummaries.Where(x => x.InitialClaimAllocatedAmount > 0).Select(x => x.SupplierId).ToList();
-            if (initialSupplierIds.Count > 0)
-            {
-                var laterInitial = await db.PaymentRunSupplierSummaries.Where(x => !x.PaymentRun!.IsDeleted && x.PaymentRunId > id && initialSupplierIds.Contains(x.SupplierId) && x.AllocatedAmount > 0)
-                    .Select(x => x.PaymentRunId).Take(10).ToListAsync();
-                if (laterInitial.Count > 0) throw new InvalidOperationException("این پرداخت از مطالبات استقراری تامین‌کننده استفاده کرده و در پرداخت‌های بعدی نیز همان تامین‌کننده تخصیص گرفته است؛ ابتدا پرداخت‌های بعدی وابسته را حذف کنید.");
-            }
-
-            foreach (var summary in run.SupplierSummaries.Where(x => x.InitialClaimAllocatedAmount > 0))
-            {
-                var supplier = await db.Suppliers.SingleAsync(x => x.Id == summary.SupplierId);
-                var before = supplier.InitialClaimAmount;
-                supplier.InitialClaimAmount = Math.Round(before + summary.InitialClaimAllocatedAmount, 2);
-                db.SupplierClaimHistories.Add(new SupplierClaimHistory
+                if (keys.Count > 0)
                 {
-                    SupplierId = supplier.Id,
-                    ClaimType = SupplierClaimType.Initial,
-                    AmountBefore = before,
-                    AmountChange = summary.InitialClaimAllocatedAmount,
-                    AmountAfter = supplier.InitialClaimAmount,
-                    PaymentRunId = run.Id,
-                    Reference = $"برگشت مطالبات استقراری بابت حذف منطقی پرداخت شماره {run.Id}",
-                    EffectiveDateJalali = run.CalculationDateJalali,
-                    UserId = UserId
-                });
+                    var dependent = await db.PaymentRunInvoices
+                        .Where(x => !x.PaymentRun!.IsDeleted && x.PaymentRunId > id &&
+                                    keys.Contains(x.PaymentKeyHash) && x.PreviousAllocated > 0)
+                        .Select(x => new { x.PaymentRunId, x.ReceiptNo }).Take(10).ToListAsync();
+                    if (dependent.Count > 0)
+                        throw new InvalidOperationException("این پرداخت قبلاً اثر مالی داشته و در محاسبات بعدی مورد استفاده قرار گرفته است؛ ابتدا محاسبات بعدی وابسته را حذف کنید.");
+                }
+
+                foreach (var summary in run.SupplierSummaries.Where(x => x.InitialClaimAllocatedAmount > 0))
+                {
+                    var supplier = await db.Suppliers.SingleAsync(x => x.Id == summary.SupplierId);
+                    var before = supplier.InitialClaimAmount;
+                    supplier.InitialClaimAmount = Math.Round(before + summary.InitialClaimAllocatedAmount, 2);
+                    db.SupplierClaimHistories.Add(new SupplierClaimHistory
+                    {
+                        SupplierId = supplier.Id,
+                        ClaimType = SupplierClaimType.Initial,
+                        AmountBefore = before,
+                        AmountChange = summary.InitialClaimAllocatedAmount,
+                        AmountAfter = supplier.InitialClaimAmount,
+                        PaymentRunId = run.Id,
+                        Reference = $"برگشت مطالبات استقراری بابت حذف منطقی پرداخت شماره {run.Id}",
+                        EffectiveDateJalali = run.CalculationDateJalali,
+                        UserId = UserId
+                    });
+                }
             }
 
             run.IsDeleted = true;
