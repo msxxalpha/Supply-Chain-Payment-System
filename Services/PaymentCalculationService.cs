@@ -343,6 +343,8 @@ public class PaymentCalculationService(AppDbContext db)
                 row.AllocationRatio = Math.Round(row.CalculatedAllocatedAmount / totalAssigned, 8);
     }
 
+    public static void DistributeSupplierAllocation(decimal target, List<PaymentCalculationRow> rows){AllocateBudget(target,rows);}
+
     public static void DistributeSupplierAllocation(decimal target, List<PaymentCalculationRow> rows, decimal initialSharePercent, decimal currentSharePercent, decimal rounding)
     {
         ValidateShares(initialSharePercent, currentSharePercent, "پرداخت محاسباتی");
