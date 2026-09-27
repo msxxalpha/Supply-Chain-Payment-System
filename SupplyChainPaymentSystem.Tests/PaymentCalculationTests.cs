@@ -166,7 +166,7 @@ public class PaymentCalculationTests
         var rows=new List<PaymentCalculationRow>
         {
             new(){SupplierId=1,SupplierInitialClaimAmount=0,RemainingDebt=100_000_000,DebtAgeDays=10,WeightedScore=1},
-            new(){SupplierId=2,SupplierInitialClaimAmount=0,RemainingDebt=100_000_000,DebtAgeDays=10,WeightedScore=1}
+            new(){SupplierId=2,SupplierInitialClaimAmount=0,RemainingDebt=100_000_000,DebtAgeDays=10,WeightedScore=3}
         };
         PaymentCalculationService.AllocateCalculatedBudget(6_000_000,rows,50,50,0,4_000_000,1_000_000);
         Assert.Equal(6_000_000,rows.Sum(x=>x.AllocatedAmount));
