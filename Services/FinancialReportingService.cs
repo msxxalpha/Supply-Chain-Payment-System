@@ -9,18 +9,18 @@ public class FinancialReportingService(AppDbContext db)
     {
         var context = await LoadContextAsync();
 
-        var supplierRows = BuildSupplierRows(context.Suppliers, context.ActiveRuns, context.LatestInvoices, context.ActiveInvoices);
+        var supplierRows = BuildSupplierRows(context.Suppliers, context.FinancialRuns, context.LatestInvoices, context.ActiveInvoices);
         supplierRows = ApplyPriorityAndSort(supplierRows);
 
         var parts = BuildPartRows(context.LatestInvoices, context.ActiveInvoices);
-        var totals = BuildPaymentTypeTotals(context.ActiveRuns);
+        var totals = BuildPaymentTypeTotals(context.FinancialRuns);
 
         var original = supplierRows.Sum(x => x.InitialClaim + x.CurrentClaims);
         var paid = supplierRows.Sum(x => x.TotalPaid);
         var remaining = supplierRows.Sum(x => x.Remaining);
         var coverage = original > 0 ? Math.Clamp(paid / original, 0, 1) : 0;
 
-        var trend = context.ActiveRuns
+        var trend = context.FinancialRuns
             .OrderByDescending(x => x.Id)
             .Take(12)
             .OrderBy(x => x.Id)
@@ -30,9 +30,9 @@ public class FinancialReportingService(AppDbContext db)
             .ToList();
 
         return new FinancialDashboardData(
-            context.ActiveRuns.Count,
-            context.ActiveRuns.Count(x => x.Status == PaymentRunStatus.PaymentOrdered),
-            context.ActiveRuns.Count(x => x.Status == PaymentRunStatus.Approved),
+            context.WorkflowRuns.Count,
+            context.WorkflowRuns.Count(x => x.Status == PaymentRunStatus.PaymentOrdered),
+            context.WorkflowRuns.Count(x => x.Status == PaymentRunStatus.Approved),
             original, paid, remaining, coverage,
             totals, supplierRows, parts,
             BuildSupplierPartRows(context.LatestInvoices, context.ActiveInvoices),
@@ -47,15 +47,15 @@ public class FinancialReportingService(AppDbContext db)
 
         var latest = context.LatestInvoices.Where(x => x.SupplierId == supplierId).ToList();
         var activeCurrentInvoices = context.ActiveInvoices.Where(x => x.SupplierId == supplierId).ToList();
-        var paidSummary = context.ActiveRuns.SelectMany(x => x.SupplierSummaries)
+        var paidSummary = context.FinancialRuns.SelectMany(x => x.SupplierSummaries)
             .Where(x => x.SupplierId == supplierId).ToList();
-        var nonCalculatedLines = context.ActiveRuns
+        var nonCalculatedLines = context.FinancialRuns
             .Where(x => x.RunType == PaymentRunType.NonCalculated)
             .SelectMany(x => x.NonCalculatedPaymentLines)
             .Where(x => x.SupplierId == supplierId)
             .ToList();
 
-        var calculatedPaid = context.ActiveRuns.Where(x => x.RunType == PaymentRunType.Calculated)
+        var calculatedPaid = context.FinancialRuns.Where(x => x.RunType == PaymentRunType.Calculated)
             .SelectMany(x => x.SupplierSummaries).Where(x => x.SupplierId == supplierId)
             .Sum(x => x.AllocatedAmount);
 
@@ -82,7 +82,7 @@ public class FinancialReportingService(AppDbContext db)
             : 0;
 
         var paymentHistory = BuildSupplierPaymentHistory(
-            context.ActiveRuns, supplierId, nonCalculatedLines);
+            context.FinancialRuns, supplierId, nonCalculatedLines);
 
         var partRows = latest
             .GroupBy(x => new { x.PartId, x.PartTitle })
@@ -142,7 +142,7 @@ public class FinancialReportingService(AppDbContext db)
 
     async Task<ReportingContext> LoadContextAsync()
     {
-        var activeRuns = await db.PaymentRuns.AsNoTracking()
+        var workflowRuns = await db.PaymentRuns.AsNoTracking()
             .Include(x => x.Invoices)
             .Include(x => x.SupplierSummaries)
             .Include(x => x.NonCalculatedPaymentLines)
@@ -152,7 +152,14 @@ public class FinancialReportingService(AppDbContext db)
             .OrderBy(x => x.Id)
             .ToListAsync();
 
-        var activeInvoices = activeRuns.SelectMany(x => x.Invoices)
+        // صرفاً تایید شدن پرداخت، اثر مالی ایجاد نمی‌کند.
+        // فقط دستور پرداخت‌شده یا رکورد legacy تاییدشده‌ای که اثر مالی آن ثبت شده،
+        // باید در دریافتی‌ها و مانده‌های پرداخت‌شده وارد شود.
+        var financialRuns = workflowRuns
+            .Where(IsFinanciallyEffective)
+            .ToList();
+
+        var activeInvoices = financialRuns.SelectMany(x => x.Invoices)
             .OrderBy(x => x.PaymentRunId).ThenBy(x => x.Id)
             .ToList();
 
@@ -166,8 +173,12 @@ public class FinancialReportingService(AppDbContext db)
             .OrderBy(x => x.Title)
             .ToListAsync();
 
-        return new ReportingContext(activeRuns, activeInvoices, latestInvoices, suppliers);
+        return new ReportingContext(workflowRuns, financialRuns, activeInvoices, latestInvoices, suppliers);
     }
+
+    static bool IsFinanciallyEffective(PaymentRun x) =>
+        x.Status == PaymentRunStatus.PaymentOrdered ||
+        (x.Status == PaymentRunStatus.Approved && x.FinancialEffectsAppliedAt.HasValue);
 
     static List<SupplierFinanceRow> BuildSupplierRows(
         List<Supplier> suppliers,
@@ -418,7 +429,8 @@ public class FinancialReportingService(AppDbContext db)
         Math.Max(0, x.RemainingDebt - CurrentAllocation(x));
 
     record ReportingContext(
-        List<PaymentRun> ActiveRuns,
+        List<PaymentRun> WorkflowRuns,
+        List<PaymentRun> FinancialRuns,
         List<PaymentRunInvoice> ActiveInvoices,
         List<PaymentRunInvoice> LatestInvoices,
         List<Supplier> Suppliers);
