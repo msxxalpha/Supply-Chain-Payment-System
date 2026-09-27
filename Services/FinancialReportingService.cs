@@ -93,11 +93,14 @@ public class FinancialReportingService(AppDbContext db)
                     .Where(x => ids.Contains(x.PaymentKeyHash))
                     .Sum(CurrentAllocation);
 
+                var originalForPart = g.Sum(x => x.OriginalDebt);
+                var remainingForPart = g.Sum(CurrentRemaining);
                 return new SupplierPartFinanceRow(
                     g.Key.PartTitle, g.Count(x => CurrentRemaining(x) > 0),
-                    g.Sum(CurrentRemaining),
+                    remainingForPart,
                     currentPaidForPart,
-                    g.Sum(x => x.OriginalDebt),
+                    originalForPart,
+                    originalForPart > 0 ? Math.Clamp(currentPaidForPart / originalForPart, 0, 1) : 0,
                     g.Any(x => x.ContractSettlementDays > 0 && x.DebtAgeDays > x.ContractSettlementDays));
             })
             .OrderByDescending(x => x.Remaining)
