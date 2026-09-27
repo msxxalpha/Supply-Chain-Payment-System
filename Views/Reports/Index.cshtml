@@ -1,11 +1,80 @@
-@model Indamin.Payment.Controllers.ReportsController.ReportsVm
+@model Indamin.Payment.Services.FinancialDashboardData
 @using Indamin.Payment.Data
-@{ViewData["Title"]="داشبورد و گزارش‌های مالی زنجیره تأمین";var maxSup=Model.Suppliers.Take(10).Select(x=>x.Paid).DefaultIfEmpty(1).Max();var maxPart=Model.Parts.Take(10).Select(x=>x.Allocated).DefaultIfEmpty(1).Max();var totalRuns=Math.Max(1,Model.RunCount);var approvedPct=Model.Status.GetValueOrDefault(PaymentRunStatus.Approved)/(decimal)totalRuns*100;var calculatedPct=Model.Status.GetValueOrDefault(PaymentRunStatus.Calculated)/(decimal)totalRuns*100;}
-<div class="page-header"><div><div class="eyebrow">تحلیل مالی زنجیره تأمین</div><h2>داشبورد و گردش مالی تامین‌کنندگان</h2><p class="text-muted">نمای یکپارچه مطالبات استقراری، مطالبات رسیدهای جاری، پرداخت‌های تاییدشده و مانده واقعی هر تامین‌کننده.</p></div><div class="export-group"><a class="btn btn-main" href="/PaymentWizard">محاسبه جدید</a><a class="btn btn-outline-primary" href="/NonCalculatedPayment">پرداخت غیرمحاسباتی</a><a class="btn btn-outline-secondary" href="/PaymentWizard/History">تاریخچه</a></div></div>
-<div class="payment-kpi-grid report-kpis"><div class="payment-kpi"><span>کل نوبت‌های محاسبه</span><strong>@Model.RunCount</strong><small>@Model.ApprovedRuns مورد فعال (تایید یا دستور پرداخت)</small></div><div class="payment-kpi"><span>مطالبات استقراری + جاری</span><strong>@Model.Original.ToString("N0")</strong><small>بر مبنای آخرین وضعیت هر رسید</small></div><div class="payment-kpi"><span>کل تخصیص تاییدشده</span><strong>@Model.Allocated.ToString("N0")</strong><small>گردش خروجی پرداخت</small></div><div class="payment-kpi"><span>مانده مطالبات</span><strong>@Model.Remaining.ToString("N0")</strong><small>@Model.Suppliers.Count تامین‌کننده دارای سابقه</small></div></div>
-<div class="row g-3 mt-1"><div class="col-lg-7"><div class="form-panel report-chart-card"><div class="panel-title"><div><h4>روند ۱۲ نوبت اخیر</h4><span>بودجه در برابر تخصیص تاییدشده</span></div></div><div class="trend-chart">@foreach(var x in Model.Trend){var pct=x.Budget>0?Math.Min(100,x.Allocated/x.Budget*100):0;<div class="trend-item"><div class="trend-label"><span>@x.Date</span><b>@x.Allocated.ToString("N0")</b></div><div class="trend-track"><div class="trend-bar" style="width:@pct.ToString("0.##",System.Globalization.CultureInfo.InvariantCulture)%"></div></div><small>@pct.ToString("0.0")٪ بودجه تخصیص یافته</small></div>}</div></div></div><div class="col-lg-5"><div class="form-panel report-chart-card"><div class="panel-title"><div><h4>وضعیت محاسبات</h4><span>تعداد نوبت‌ها بر اساس وضعیت</span></div></div><div class="status-donut" style="--approved:@approvedPct.ToString("0.##",System.Globalization.CultureInfo.InvariantCulture)%;--calculated:@calculatedPct.ToString("0.##",System.Globalization.CultureInfo.InvariantCulture)%;"><div class="donut-center"><strong>@Model.RunCount</strong><span>نوبت</span></div></div><div class="status-legend">@foreach(var st in Enum.GetValues<PaymentRunStatus>()){var n=Model.Status.GetValueOrDefault(st);<div><span>@(st==PaymentRunStatus.Approved?"تاییدشده":st==PaymentRunStatus.PaymentOrdered?"دستور پرداخت شده":st==PaymentRunStatus.Cancelled?"لغوشده":st==PaymentRunStatus.Calculated?"محاسبه‌شده":"پیش‌نویس")</span><b>@n</b></div>}</div></div></div></div>
-<div class="form-panel mt-3"><div class="panel-title"><div><h4>تحلیل مالی و شاخص کمکی بررسی پرداخت</h4><span>شاخص صرفاً ابزار تحلیلی است و جایگزین تصمیم مالی یا کنترل‌های سازمانی نیست.</span></div><span class="mini-label">۰ تا ۱۰۰</span></div><div class="analysis-method"><b>روش محاسبه:</b> ۳۰٪ مانده مطالبات + ۳۰٪ نسبت سن بدهی به مهلت قرارداد + ۲۰٪ سهم رسیدهای سررسیدگذشته + ۱۵٪ کمبود پوشش پرداخت + ۵٪ تعداد رسیدها. عدد بالاتر یعنی موضوع برای بررسی انسانی نیازمند توجه بیشتری است.</div><div class="table-responsive"><table class="table modern-table"><thead><tr><th>تامین‌کننده</th><th>استقراری</th><th>مطالبات جاری</th><th>پرداخت تاییدشده</th><th>مانده</th><th>پوشش</th><th>رسید سررسیدگذشته</th><th>شاخص</th></tr></thead><tbody>@foreach(var x in Model.Suppliers.Take(20)){<tr><td class="fw-bold">@x.Title</td><td>@x.InitialClaim.ToString("N0")</td><td>@x.CurrentClaims.ToString("N0")</td><td>@x.Paid.ToString("N0")</td><td class="amount-emphasis">@x.Remaining.ToString("N0")</td><td>@((x.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</td><td>@x.Overdue</td><td><span class="priority-pill">@x.Priority</span></td></tr>}</tbody></table></div></div>
-<div class="row g-3 mt-1"><div class="col-xl-8"><div class="form-panel"><div class="panel-title"><div><h4>گردش مالی تامین‌کنندگان</h4><span>تفکیک مانده استقراری، مطالبات جاری، پرداخت و مانده قابل پیگیری</span></div></div><div class="table-responsive"><table class="table modern-table"><thead><tr><th>تامین‌کننده</th><th>مطالبات استقراری</th><th>مطالبات جاری</th><th>کل مبنای مطالبات</th><th>پرداخت تاییدشده</th><th>مانده رسیدها</th><th>پوشش</th><th>شاخص</th></tr></thead><tbody>@foreach(var x in Model.Suppliers.OrderByDescending(x=>x.Remaining)){<tr><td class="fw-bold">@x.Title</td><td>@x.InitialClaim.ToString("N0")</td><td>@x.CurrentClaims.ToString("N0")</td><td>@((x.InitialClaim+x.CurrentClaims).ToString("N0"))</td><td>@x.Paid.ToString("N0")</td><td class="amount-emphasis">@x.Remaining.ToString("N0")</td><td>@((x.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</td><td><span class="priority-pill">@x.Priority</span></td></tr>}</tbody></table></div></div></div><div class="col-xl-4"><div class="form-panel"><div class="panel-title"><div><h4>بیشترین پرداخت تاییدشده</h4><span>تجمعی در تمام پرداخت‌های تاییدشده</span></div></div><div class="report-bars">@foreach(var x in Model.Suppliers.OrderByDescending(x=>x.Paid).Take(10)){<div class="report-bar-row"><div><span>@x.Title</span><b>@x.Paid.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@((x.Paid/maxSup*100).ToString("0.##",System.Globalization.CultureInfo.InvariantCulture))%"></div></div></div>}</div></div></div></div>
-<div class="form-panel mt-3"><div class="panel-title"><div><h4>مطالبات تامین‌کننده به تفکیک کالا</h4><span>آخرین مانده هر رسید از آخرین نوبت تاییدشده، همراه با پرداخت تجمعی</span></div></div><div class="table-responsive"><table class="table modern-table"><thead><tr><th>تامین‌کننده</th><th>کالا</th><th>رسید</th><th>مطالبه جاری</th><th>پرداخت تاییدشده</th><th>مانده</th><th>پوشش</th></tr></thead><tbody>@foreach(var x in Model.SupplierParts.Take(100)){<tr><td class="fw-bold">@x.Supplier</td><td>@x.Part</td><td>@x.Count</td><td>@x.Original.ToString("N0")</td><td>@x.Allocated.ToString("N0")</td><td class="amount-emphasis">@x.Remaining.ToString("N0")</td><td>@((x.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</td></tr>}</tbody></table></div></div>
-<div class="form-panel mt-3"><div class="panel-title"><div><h4>گزارش کالاها</h4><span>مانده واقعی و پرداخت تجمعی بر اساس آخرین وضعیت رسیدها</span></div></div><div class="table-responsive"><table class="table modern-table"><thead><tr><th>کالا</th><th>رسید باز</th><th>مطالبه جاری</th><th>پرداخت تاییدشده</th><th>مانده</th><th>پوشش</th><th>رسید سررسیدگذشته</th><th>شاخص</th></tr></thead><tbody>@foreach(var x in Model.Parts.OrderByDescending(x=>x.Remaining)){<tr><td class="fw-bold">@x.Title</td><td>@x.Count</td><td>@x.Original.ToString("N0")</td><td>@x.Allocated.ToString("N0")</td><td class="amount-emphasis">@x.Remaining.ToString("N0")</td><td>@((x.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</td><td>@x.Overdue</td><td><span class="priority-pill">@x.Priority</span></td></tr>}</tbody></table></div></div>
-<div class="form-panel mt-3"><div class="panel-title"><div><h4>آخرین پرداخت‌های تاییدشده</h4><span>برای ورود به جزئیات، روی شماره نوبت کلیک کنید.</span></div></div><div class="recent-runs">@foreach(var x in Model.Recent){<a href="/PaymentWizard/Details/@x.Id" class="recent-run"><span>#@x.Id</span><div><b>@x.Title</b><small>@x.Date · @x.Count رسید</small></div><strong>@x.Allocated.ToString("N0")</strong></a>}</div></div>
+@{
+ ViewData["Title"]="داشبورد و گزارش‌های مالی زنجیره تأمین";
+ var types=new[]{
+  ("محاسبه تخصیص مبلغ",Model.PaymentTypes.Calculated),
+  ("نقدی",Model.PaymentTypes.Cash),
+  ("واگذاری چک",Model.PaymentTypes.Check),
+  ("واگذاری خودرو",Model.PaymentTypes.Vehicle),
+  ("واگذاری مواداولیه",Model.PaymentTypes.RawMaterial),
+  ("معرفی نامه",Model.PaymentTypes.IntroductionLetter),
+  ("حد اعتباری",Model.PaymentTypes.CreditLimit)
+ };
+}
+<div class="page-header">
+ <div><div class="eyebrow">تحلیل مالی زنجیره تأمین</div><h2>داشبورد و گزارش‌های مالی</h2><p class="text-muted">نمای یکپارچه مطالبات استقراری، مطالبات جاری، پرداخت‌های محاسباتی و پرداخت‌های غیرمحاسباتی با تفکیک نوع.</p></div>
+ <div class="export-group">
+  @if(User.HasClaim("Permission","Reports.SupplierOverview")){<a class="btn btn-main" href="/SupplierOverview">مرور تامین‌کننده</a>}
+  @if(User.HasClaim("Permission","Payment.Calculate")){<a class="btn btn-outline-primary" href="/PaymentWizard">محاسبه جدید</a>}
+  @if(User.HasClaim("Permission","Payment.NonCalculated")){<a class="btn btn-outline-primary" href="/NonCalculatedPayment">پرداخت غیرمحاسباتی</a>}
+  <a class="btn btn-outline-secondary" href="/PaymentWizard/History">سوابق پرداخت</a>
+ </div>
+</div>
+
+<div class="payment-kpi-grid report-kpis">
+ <div class="payment-kpi"><span>مجموع مطالبات باقی‌مانده</span><strong>@Model.Remaining.ToString("N0")</strong><small>استقراری + جاری</small></div>
+ <div class="payment-kpi"><span>کل پرداخت فعال</span><strong>@Model.TotalPaid.ToString("N0")</strong><small>محاسباتی + غیرمحاسباتی</small></div>
+ <div class="payment-kpi"><span>تخصیص از محل محاسبات</span><strong>@Model.PaymentTypes.Calculated.ToString("N0")</strong><small>پرداخت محاسباتی</small></div>
+ <div class="payment-kpi"><span>کل پرداخت غیرمحاسباتی</span><strong>@Model.PaymentTypes.NonCalculatedTotal.ToString("N0")</strong><small>شش نوع پرداخت غیرمحاسباتی</small></div>
+</div>
+
+<div class="row g-3 mt-1">
+ <div class="col-xl-7">
+  <div class="form-panel">
+   <div class="panel-title"><div><h4>ترکیب انواع پرداخت</h4><span>مبالغ ثبت‌شده در پرداخت‌های فعال</span></div><span class="validation-chip validation-ok">@Model.PaymentTypes.GrandTotal.ToString("N0") ریال</span></div>
+   <div class="payment-mix">
+    @foreach(var item in types){
+      var p=Model.PaymentTypes.GrandTotal>0?item.Item2/Model.PaymentTypes.GrandTotal*100:0;
+      <div class="mix-row"><div><span>@item.Item1</span><b>@item.Item2.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@p.ToString("0.##",System.Globalization.CultureInfo.InvariantCulture)%"></div></div><small>@p.ToString("0.0",System.Globalization.CultureInfo.InvariantCulture)٪</small></div>
+    }
+   </div>
+  </div>
+ </div>
+ <div class="col-xl-5">
+  <div class="form-panel h-100">
+   <div class="panel-title"><div><h4>پوشش مالی</h4><span>کل پرداخت در برابر مبنای مطالبات تاریخی</span></div><span class="priority-pill">@((Model.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</span></div>
+   <div class="coverage-visual"><div class="coverage-ring" style="--coverage:@((Model.Coverage*100m).ToString("0.##",System.Globalization.CultureInfo.InvariantCulture))%;"><div><strong>@((Model.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</strong><span>پوشش</span></div></div><div class="coverage-copy"><b>@Model.TotalPaid.ToString("N0")</b><span>پرداخت فعال</span><b>@Model.Remaining.ToString("N0")</b><span>مانده</span></div></div>
+  </div>
+ </div>
+</div>
+
+<div class="form-panel mt-3">
+ <div class="panel-title"><div><h4>تحلیل تامین‌کنندگان</h4><span>مرتب‌شده بر اساس شاخص تحلیلی پرداخت و مانده مطالبات</span></div><span class="mini-label">@Model.Suppliers.Count تامین‌کننده</span></div>
+ <div class="table-responsive"><table class="table modern-table"><thead><tr><th>تامین‌کننده</th><th>استقراری</th><th>جاری</th><th>محاسباتی</th><th>غیرمحاسباتی</th><th>کل پرداخت</th><th>مانده</th><th>پوشش</th><th>رسید باز</th><th>شاخص</th><th>مرور</th></tr></thead><tbody>
+ @foreach(var x in Model.Suppliers){
+  <tr><td class="fw-bold">@x.SupplierTitle</td><td>@x.InitialClaim.ToString("N0")</td><td>@x.CurrentClaims.ToString("N0")</td><td>@x.CalculatedPaid.ToString("N0")</td><td>@x.NonCalculatedTotal.ToString("N0")</td><td>@x.TotalPaid.ToString("N0")</td><td class="amount-emphasis">@x.Remaining.ToString("N0")</td><td>@((x.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</td><td>@x.OpenReceiptCount</td><td><span class="priority-pill">@x.Priority</span></td><td>@if(User.HasClaim("Permission","Reports.SupplierOverview")){<a class="btn btn-sm btn-outline-primary" href="/SupplierOverview/Index/@x.SupplierId">مشاهده</a>}</td></tr>
+ }
+ </tbody></table></div>
+</div>
+
+<div class="row g-3 mt-1">
+ <div class="col-xl-8"><div class="form-panel"><div class="panel-title"><div><h4>گردش مالی تامین‌کنندگان</h4><span>مبنای مطالبات، پرداخت تجمعی و مانده</span></div></div><div class="table-responsive"><table class="table modern-table"><thead><tr><th>تامین‌کننده</th><th>مبنای مطالبات تاریخی</th><th>کل پرداخت فعال</th><th>مانده</th><th>پوشش</th><th>سررسید گذشته</th></tr></thead><tbody>
+ @foreach(var x in Model.Suppliers.OrderByDescending(x=>x.Remaining)){<tr><td class="fw-bold">@x.SupplierTitle</td><td>@x.GrandPayableBasis.ToString("N0")</td><td>@x.TotalPaid.ToString("N0")</td><td class="amount-emphasis">@x.Remaining.ToString("N0")</td><td>@((x.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</td><td>@x.Overdue</td></tr>}
+ </tbody></table></div></div></div>
+ <div class="col-xl-4"><div class="form-panel"><div class="panel-title"><div><h4>پرداخت‌های اخیر</h4><span>آخرین نوبت‌های فعال</span></div></div><div class="recent-runs">@foreach(var x in Model.Trend.OrderByDescending(x=>x.RunId).Take(10)){<a href="/PaymentWizard/Details/@x.RunId" class="recent-run"><span>#@x.RunId</span><div><b>@x.Title</b><small>@x.Date · @(x.RunType==PaymentRunType.Calculated?"محاسباتی":"غیرمحاسباتی") · @(x.Status==PaymentRunStatus.PaymentOrdered?"دستور پرداخت شده":"تایید شده")</small></div><strong>@x.Amount.ToString("N0")</strong></a>}</div></div></div>
+</div>
+
+<div class="form-panel mt-3">
+ <div class="panel-title"><div><h4>مانده مطالبات به تفکیک کالا</h4><span>تصویر جاری از بدهی‌های باز هر کالا</span></div></div>
+ <div class="table-responsive"><table class="table modern-table"><thead><tr><th>کالا</th><th>رسید باز</th><th>مطالبه جاری</th><th>پرداخت جاری</th><th>مانده</th><th>پوشش</th><th>سررسید گذشته</th></tr></thead><tbody>
+ @foreach(var x in Model.Parts){<tr><td class="fw-bold">@x.PartTitle</td><td>@x.OpenReceiptCount</td><td>@x.Original.ToString("N0")</td><td>@x.Paid.ToString("N0")</td><td class="amount-emphasis">@x.Remaining.ToString("N0")</td><td>@((x.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</td><td>@x.Overdue</td></tr>}
+ </tbody></table></div>
+</div>
+
+<div class="form-panel mt-3">
+ <div class="panel-title"><div><h4>مطالبات تامین‌کننده به تفکیک کالا</h4><span>قابل استفاده برای تحلیل جزئیات زنجیره تامین</span></div></div>
+ <div class="table-responsive"><table class="table modern-table"><thead><tr><th>تامین‌کننده</th><th>کالا</th><th>رسید باز</th><th>مبلغ اولیه</th><th>پرداخت</th><th>مانده</th><th>پوشش</th></tr></thead><tbody>
+ @foreach(var x in Model.SupplierParts){<tr><td class="fw-bold">@x.SupplierTitle</td><td>@x.PartTitle</td><td>@x.OpenReceiptCount</td><td>@x.Original.ToString("N0")</td><td>@x.Paid.ToString("N0")</td><td class="amount-emphasis">@x.Remaining.ToString("N0")</td><td>@((x.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</td></tr>}
+ </tbody></table></div>
+</div>
