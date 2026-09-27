@@ -35,7 +35,7 @@ public class ReportsController(AppDbContext db) : Controller
    var ageRatio=open>0?latest.Where(x=>CurrentRemaining(x)>0).Average(x=>x.ContractSettlementDays>0?(decimal)x.DebtAgeDays/x.ContractSettlementDays:1):0;
    var overdue=latest.Count(x=>CurrentRemaining(x)>0&&x.ContractSettlementDays>0&&x.DebtAgeDays>x.ContractSettlementDays);
    var remaining=sm.InitialClaimAmount+currentOutstanding;
-   suppliers.Add(new SupplierRow(sm.Id,sm.Title,open,sm.InitialClaimAmount,currentOutstanding,paid,remaining,basis>0?Math.Clamp(paid/basis,0,1):0,ageRatio,overdue,0));
+   suppliers.Add(new SupplierRow(sm.Id,sm.Title,open,sm.InitialClaimAmount,currentOutstanding,paid,supplierRemaining,basis>0?Math.Clamp(paid/basis,0,1):0,ageRatio,overdue,0));
   }
   suppliers=suppliers.Where(x=>x.Remaining>0||x.Paid>0).OrderByDescending(x=>x.Remaining).ToList();
 
