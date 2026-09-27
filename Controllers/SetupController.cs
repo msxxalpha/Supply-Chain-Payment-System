@@ -104,6 +104,6 @@ namespace Indamin.Payment.Controllers;
  public record EvaluationEditItem(int ParameterId,decimal Score);
 
  public record ParametersVm(List<PaymentParameter> Rows);public record LookupVm(Dictionary<string,List<LookupValue>> Rows,List<string> Groups,string Group,string Tab,CompanySettings Company);
- public record PartsVm(List<Part> Rows,List<LookupValue> Types,HashSet<int> LockedIds);public record SuppliersVm(List<Supplier> Rows,List<LookupValue> Activities,HashSet<int> LockedIds,HashSet<int> InitialClaimLockedIds);
+ public record PartsVm(List<Part> Rows,List<LookupValue> Types,HashSet<int> LockedIds);public record SupplierClaimHistoryVm(Supplier Supplier,List<SupplierClaimHistory> Rows);public record SuppliersVm(List<Supplier> Rows,List<LookupValue> Activities,HashSet<int> LockedIds,HashSet<int> InitialClaimLockedIds);
  public record MappingsVm(List<SupplierPart> Rows,List<Supplier> Suppliers,List<Part> Parts,HashSet<int> LockedIds);public record EvaluationsVm(List<SupplierPart> Mappings,List<PaymentParameter> Parameters,List<SupplierPartEvaluation> Scores);
 }
