@@ -384,7 +384,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             db.PaymentRuns.Add(run);
             await db.SaveChangesAsync();
 
-            await SaveSystemParameterSnapshotsAsync(run.Id);
+            await SaveSystemParameterSnapshotsAsync(run.Id, s);
             foreach (var p in s.Parameters)
                 db.PaymentRunParameterSnapshots.Add(new PaymentRunParameterSnapshot
                 {
@@ -499,12 +499,19 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         }
     }
 
-    async Task SaveSystemParameterSnapshotsAsync(int runId)
+    async Task SaveSystemParameterSnapshotsAsync(int runId, PaymentWizardState s)
     {
         var values = await db.SystemParameters.Where(x => x.IsActive).AsNoTracking().ToListAsync();
+        var captured = s.SystemParameterValues ?? new Dictionary<string, decimal>();
+
         db.PaymentRunSystemParameterSnapshots.AddRange(values.Select(x => new PaymentRunSystemParameterSnapshot
         {
-            PaymentRunId = runId, Code = x.Code, Title = x.Title, ValueType = x.ValueType, Value = x.Value, Unit = x.Unit
+            PaymentRunId = runId,
+            Code = x.Code,
+            Title = x.Title,
+            ValueType = x.ValueType,
+            Value = captured.TryGetValue(x.Code, out var value) ? value : x.Value,
+            Unit = x.Unit
         }));
         await db.SaveChangesAsync();
     }
