@@ -179,16 +179,15 @@ public class PaymentCalculationService(AppDbContext db)
     public async Task<Dictionary<string, decimal>> PreviousCurrentAsync()
     {
         return await db.PaymentRunInvoices
-            .Where(x => !x.PaymentRun!.IsDeleted && (x.PaymentRun.Status == PaymentRunStatus.Approved || x.PaymentRun.Status == PaymentRunStatus.PaymentOrdered))
+            .Where(x => !x.PaymentRun!.IsDeleted &&
+                        (x.PaymentRun.Status == PaymentRunStatus.PaymentOrdered ||
+                         (x.PaymentRun.Status == PaymentRunStatus.Approved && x.PaymentRun.FinancialEffectsAppliedAt.HasValue)))
             .GroupBy(x => x.PaymentKeyHash)
             .Select(g => new
             {
                 Key = g.Key,
-                Amount = g.Sum(x => x.AllocatedCurrentAmount > 0
-                    ? x.AllocatedCurrentAmount
-                    : x.AllocatedInitialClaimAmount > 0
-                        ? 0
-                        : x.AllocatedAmount)
+                Amount = g.Sum(x => x.AllocatedCurrentAmount > 0 ? x.AllocatedCurrentAmount :
+                    x.AllocatedInitialClaimAmount > 0 ? 0 : x.AllocatedAmount)
             })
             .ToDictionaryAsync(x => x.Key, x => x.Amount);
     }
@@ -196,7 +195,9 @@ public class PaymentCalculationService(AppDbContext db)
     public async Task<List<PaymentCurrentReceiptSnapshot>> CurrentReceiptsAsync()
     {
         var invoices = await db.PaymentRunInvoices
-            .Where(x => !x.PaymentRun!.IsDeleted && (x.PaymentRun.Status == PaymentRunStatus.Approved || x.PaymentRun.Status == PaymentRunStatus.PaymentOrdered))
+            .Where(x => !x.PaymentRun!.IsDeleted &&
+                        (x.PaymentRun.Status == PaymentRunStatus.PaymentOrdered ||
+                         (x.PaymentRun.Status == PaymentRunStatus.Approved && x.PaymentRun.FinancialEffectsAppliedAt.HasValue)))
             .OrderBy(x => x.PaymentRunId).ThenBy(x => x.Id).AsNoTracking().ToListAsync();
 
         var latest = invoices.GroupBy(x => x.PaymentKeyHash).Select(g => g.Last()).ToList();
@@ -233,8 +234,8 @@ public class PaymentCalculationService(AppDbContext db)
         s.CalculatedInitialSharePercent = Value(values, "CALC_INITIAL_SHARE", 50);
         s.CalculatedCurrentSharePercent = Value(values, "CALC_CURRENT_SHARE", 50);
         s.MinimumEffectiveDebtAge = Value(values, "MIN_EFFECTIVE_DEBT_AGE", 0);
-        s.MinimumAllocationAmount = Value(values, "MIN_ALLOCATION_AMOUNT", 0);
-        s.AllocationRounding = Value(values, "ALLOCATION_ROUNDING", 1000000);
+        s.MinimumAllocationAmount = Value(values, "MIN_ALLOCATION_AMOUNT", 1);
+        s.AllocationRounding = Value(values, "ALLOCATION_ROUNDING", 100000);
         ValidateShares(s.CalculatedInitialSharePercent, s.CalculatedCurrentSharePercent, "پرداخت محاسباتی");
     }
 
@@ -277,6 +278,8 @@ public class PaymentCalculationService(AppDbContext db)
     {
         ValidateShares(initialSharePercent, currentSharePercent, "پرداخت محاسباتی");
         EnsureRounding(rounding);
+        minAge = Math.Max(0, minAge);
+        minAmount = Math.Max(0, minAmount);
 
         foreach (var row in rows)
         {
@@ -292,45 +295,64 @@ public class PaymentCalculationService(AppDbContext db)
         var supplierInitial = rows.Where(x => x.SupplierId.HasValue)
             .GroupBy(x => x.SupplierId!.Value)
             .ToDictionary(g => g.Key, g => Math.Max(0, g.First().SupplierInitialClaimAmount));
-        var remainingBudget = FloorToMultiple(Math.Min(Math.Max(0, budget), rows.Where(x => x.DebtAgeDays > minAge).Sum(x => x.RemainingDebt)
-            + supplierInitial.Where(x => rows.Any(r => r.SupplierId == x.Key && r.DebtAgeDays > minAge)).Sum(x => x.Value)), rounding);
+
+        var eligibleRows = rows.Where(x => x.DebtAgeDays > minAge && x.SupplierId.HasValue).ToList();
+        var initialCapacity = supplierInitial
+            .Where(x => eligibleRows.Any(r => r.SupplierId == x.Key))
+            .Sum(x => x.Value);
+        var currentCapacity = eligibleRows.Sum(x => Math.Max(0, x.RemainingDebt));
+        var remainingBudget = FloorToMultiple(
+            Math.Min(Math.Max(0, budget), currentCapacity + initialCapacity),
+            rounding);
 
         while (remainingBudget >= rounding)
         {
-            var active = rows.Where(x => x.DebtAgeDays > minAge && x.SupplierId.HasValue &&
-                                         AvailableCapacity(x, supplierInitial.GetValueOrDefault(x.SupplierId!.Value)) >= rounding)
+            var active = eligibleRows
+                .Where(x => AvailableCapacity(x, supplierInitial.GetValueOrDefault(x.SupplierId!.Value)) >= rounding)
                 .ToList();
             if (active.Count == 0) break;
 
+            var passBudget = remainingBudget;
             var weightSum = active.Sum(x => Math.Max(.000001m, x.WeightedScore));
-            var desired = active.ToDictionary(x => x, x => remainingBudget * Math.Max(.000001m, x.WeightedScore) / weightSum);
-            var eligible = active.Where(x => desired[x] > minAmount && desired[x] >= rounding).ToList();
+            var provisional = active.ToDictionary(
+                x => x,
+                x => FloorToMultiple(passBudget * Math.Max(.000001m, x.WeightedScore) / weightSum, rounding));
+
+            var eligible = active
+                .Where(x => provisional[x] >= rounding && provisional[x] > minAmount)
+                .ToList();
+
             if (eligible.Count == 0) break;
 
-            var assignedThisPass = 0m;
             var eligibleWeight = eligible.Sum(x => Math.Max(.000001m, x.WeightedScore));
+            var assignedThisPass = 0m;
 
-            foreach (var row in eligible.OrderByDescending(x => x.WeightedScore).ThenBy(x => x.ReceiptDate))
+            foreach (var row in eligible.OrderByDescending(x => x.WeightedScore).ThenBy(x => x.ReceiptDate).ThenBy(x => x.ReceiptNo))
             {
-                var amount = FloorToMultiple(remainingBudget * Math.Max(.000001m, row.WeightedScore) / eligibleWeight, rounding);
+                var requested = FloorToMultiple(passBudget * Math.Max(.000001m, row.WeightedScore) / eligibleWeight, rounding);
                 var initialRemaining = supplierInitial.GetValueOrDefault(row.SupplierId!.Value);
-                var capacity = AvailableCapacity(row, initialRemaining);
-                amount = Math.Min(amount, FloorToMultiple(capacity, rounding));
-                if (amount < rounding) continue;
+                var currentRemaining = Math.Max(0, row.RemainingDebt - row.AllocatedCurrentAmount);
+                var capacity = Math.Min(AvailableCapacity(row, initialRemaining), remainingBudget);
+                var amount = FloorToMultiple(Math.Min(requested, capacity), rounding);
+                if (amount < rounding || amount <= minAmount) continue;
 
-                var split = SplitByShares(amount, initialRemaining, Math.Max(0, row.RemainingDebt - row.AllocatedCurrentAmount), initialSharePercent, currentSharePercent);
-                if (split.Total <= 0) continue;
+                var split = SplitByShares(amount, initialRemaining, currentRemaining, initialSharePercent, currentSharePercent, rounding);
+                if (split.Total <= 0 || split.Total <= minAmount) continue;
 
                 row.AllocatedInitialClaimAmount += split.InitialClaim;
                 row.AllocatedCurrentAmount += split.Current;
                 row.AllocatedAmount = row.AllocatedInitialClaimAmount + row.AllocatedCurrentAmount;
+
+                // مرحله دوم محاسباتی باید دقیقاً در همین فیلدها snapshot شود؛
+                // در مرحله سوم فقط Allocated* تغییر می‌کند.
                 row.CalculatedInitialClaimAllocatedAmount = row.AllocatedInitialClaimAmount;
                 row.CalculatedCurrentAllocatedAmount = row.AllocatedCurrentAmount;
                 row.CalculatedAllocatedAmount = row.AllocatedAmount;
-                supplierInitial[row.SupplierId.Value] = Math.Max(0, initialRemaining - split.InitialClaim);
 
-                assignedThisPass += split.Total;
+                supplierInitial[row.SupplierId.Value] = Math.Max(0, initialRemaining - split.InitialClaim);
                 remainingBudget -= split.Total;
+                assignedThisPass += split.Total;
+
                 if (remainingBudget < rounding) break;
             }
 
@@ -343,57 +365,78 @@ public class PaymentCalculationService(AppDbContext db)
                 row.AllocationRatio = Math.Round(row.CalculatedAllocatedAmount / totalAssigned, 8);
     }
 
-    public static void DistributeSupplierAllocation(decimal target, List<PaymentCalculationRow> rows){AllocateBudget(target,rows);}
+    public static void DistributeSupplierAllocation(decimal target, List<PaymentCalculationRow> rows)
+        => AllocateBudget(target, rows);
 
-    public static void DistributeSupplierAllocation(decimal target, List<PaymentCalculationRow> rows, decimal initialSharePercent, decimal currentSharePercent, decimal rounding, decimal minAge = 0)
+    public static void DistributeSupplierAllocation(decimal target, List<PaymentCalculationRow> rows, decimal initialSharePercent, decimal currentSharePercent, decimal rounding, decimal minAge = 0, decimal minAmount = 0)
     {
         ValidateShares(initialSharePercent, currentSharePercent, "پرداخت محاسباتی");
         EnsureRounding(rounding);
-        target = Math.Round(Math.Max(0, target), 2);
-        if (Math.Abs(FloorToMultiple(target, rounding) - target) > .005m)
-            throw new InvalidOperationException($"مبلغ تخصیص تامین‌کننده باید مضربی از {rounding:N0} ریال باشد.");
+        target = FloorToMultiple(Math.Max(0, target), rounding);
 
-        var originalWeights = rows.ToDictionary(x => x, x => x.CalculatedAllocatedAmount);
+        var stage2 = rows.ToDictionary(x => x, x => (
+            x.CalculatedAllocatedAmount,
+            x.CalculatedCurrentAllocatedAmount,
+            x.CalculatedInitialClaimAllocatedAmount,
+            x.WeightedScore,
+            x.Warning));
+
         foreach (var row in rows)
         {
-            row.WeightedScore = Math.Max(.000001m, originalWeights[row]);
+            row.WeightedScore = Math.Max(.000001m, stage2[row].CalculatedAllocatedAmount);
             row.AllocatedAmount = 0;
             row.AllocatedCurrentAmount = 0;
             row.AllocatedInitialClaimAmount = 0;
         }
 
-        AllocateCalculatedBudget(target, rows, initialSharePercent, currentSharePercent, minAge, 0, rounding);
+        AllocateCalculatedBudget(target, rows, initialSharePercent, currentSharePercent, minAge, minAmount, rounding);
+
         var assigned = Math.Round(rows.Sum(x => x.AllocatedAmount), 2);
-        foreach (var row in rows) row.WeightedScore = originalWeights[row];
-        if (target > 0 && assigned + .005m < target) throw new InvalidOperationException($"مبلغ نهایی تامین‌کننده با محدودیت سن بدهی، مانده مطالبات یا رندینگ به طور کامل قابل تسهیم نیست. مبلغ قابل تخصیص {assigned:N0} ریال است.");
+        foreach (var row in rows)
+        {
+            row.CalculatedAllocatedAmount = stage2[row].CalculatedAllocatedAmount;
+            row.CalculatedCurrentAllocatedAmount = stage2[row].CalculatedCurrentAllocatedAmount;
+            row.CalculatedInitialClaimAllocatedAmount = stage2[row].CalculatedInitialClaimAllocatedAmount;
+            row.WeightedScore = stage2[row].WeightedScore;
+            row.Warning = stage2[row].Warning;
+        }
+
+        if (target > 0 && assigned + .005m < target)
+            throw new InvalidOperationException($"مبلغ نهایی تامین‌کننده با محدودیت سن بدهی، مانده مطالبات، حداقل مبلغ یا ضریب مبلغ محاسباتی به طور کامل قابل تسهیم نیست. مبلغ قابل تخصیص {assigned:N0} ریال است.");
     }
 
-    public static ClaimPaymentSplit SplitByShares(decimal total, decimal initialAvailable, decimal currentAvailable, decimal initialSharePercent, decimal currentSharePercent)
+    public static ClaimPaymentSplit SplitByShares(decimal total, decimal initialAvailable, decimal currentAvailable, decimal initialSharePercent, decimal currentSharePercent, decimal multiple = 1m)
     {
         ValidateShares(initialSharePercent, currentSharePercent, "تخصیص");
-        total = Math.Max(0, total);
-        initialAvailable = Math.Max(0, initialAvailable);
-        currentAvailable = Math.Max(0, currentAvailable);
+        EnsureRounding(multiple);
 
-        var desiredInitial = Math.Round(total * initialSharePercent / 100m, 2);
-        var desiredCurrent = total - desiredInitial;
-        var initial = Math.Min(desiredInitial, initialAvailable);
-        var current = Math.Min(desiredCurrent, currentAvailable);
-        var remainder = total - initial - current;
+        var totalUnits = (long)Math.Floor(Math.Max(0, total) / multiple);
+        var initialUnitsAvailable = (long)Math.Floor(Math.Max(0, initialAvailable) / multiple);
+        var currentUnitsAvailable = (long)Math.Floor(Math.Max(0, currentAvailable) / multiple);
+        if (totalUnits <= 0) return new ClaimPaymentSplit(0, 0);
+
+        var desiredInitialUnits = (long)Math.Round(totalUnits * initialSharePercent / 100m, MidpointRounding.AwayFromZero);
+        var desiredCurrentUnits = totalUnits - desiredInitialUnits;
+
+        var initialUnits = Math.Min(desiredInitialUnits, initialUnitsAvailable);
+        var currentUnits = Math.Min(desiredCurrentUnits, currentUnitsAvailable);
+        var remainder = totalUnits - initialUnits - currentUnits;
 
         if (remainder > 0)
         {
-            var extraInitial = Math.Min(remainder, initialAvailable - initial);
-            initial += Math.Max(0, extraInitial);
-            remainder -= Math.Max(0, extraInitial);
+            var extraCurrent = Math.Min(remainder, Math.Max(0, currentUnitsAvailable - currentUnits));
+            currentUnits += extraCurrent;
+            remainder -= extraCurrent;
         }
         if (remainder > 0)
         {
-            var extraCurrent = Math.Min(remainder, currentAvailable - current);
-            current += Math.Max(0, extraCurrent);
+            var extraInitial = Math.Min(remainder, Math.Max(0, initialUnitsAvailable - initialUnits));
+            initialUnits += extraInitial;
         }
 
-        return new ClaimPaymentSplit(Math.Round(initial, 2), Math.Round(current, 2));
+        return new ClaimPaymentSplit(
+            Math.Round(initialUnits * multiple, 2),
+            Math.Round(currentUnits * multiple, 2));
     }
 
     public static void AllocateBudget(decimal budget, List<PaymentCalculationRow> rows)
