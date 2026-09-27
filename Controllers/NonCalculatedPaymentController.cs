@@ -326,7 +326,7 @@ public class NonCalculatedPaymentController(AppDbContext db, SupplierPrioritySer
 
                 foreach (var receipt in touched)
                 {
-                    var prior = Math.Max(0, Math.Round(receipt.OriginalDebt - receipt.Receipt.RemainingDebt, 2));
+                    var prior = Math.Max(0, Math.Round(receipt.Receipt.OriginalDebt - receipt.Receipt.RemainingDebt, 2));
                     var initialForRow = receipt.Equals(touched.First()) ? initialAllocated : 0;
                     db.PaymentRunInvoices.Add(new PaymentRunInvoice
                     {
