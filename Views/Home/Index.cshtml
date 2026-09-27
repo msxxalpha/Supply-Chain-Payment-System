@@ -1,6 +1,63 @@
-@model Indamin.Payment.Controllers.HomeController.HomeVm
-@{ViewData["Title"]="داشبورد مدیریت";}
-<div class="dashboard-hero"><div class="hero-copy"><div class="eyebrow">مرکز مدیریت مالی زنجیره تامین</div><h1>سلام، @Model.Name</h1><p>مدیریت اطلاعات پایه، ارزیابی قطعه–تامین‌کننده، محاسبه سهم پرداخت و کنترل سوابق تخصیص از این داشبورد در دسترس است.</p><div class="hero-actions">@if(User.HasClaim("Permission","Payment.Calculate")){<a class="btn btn-main btn-lg" href="/PaymentWizard">شروع محاسبه پرداخت</a>}@if(User.HasClaim("Permission","Payment.NonCalculated")){<a class="btn btn-light-outline btn-lg" href="/NonCalculatedPayment">پرداخت غیرمحاسباتی</a>}@if(User.HasClaim("Permission","Setup.Parameters")){<a class="btn btn-light-outline btn-lg" href="/Setup/Parameters">تنظیم پارامترها</a>}@if(User.HasClaim("Permission","Reports.View")){<a class="btn btn-light-outline btn-lg" href="/Reports">داشبورد مالی</a>}</div></div><div class="hero-visual"><div class="visual-ring ring-one"></div><div class="visual-ring ring-two"></div><div class="visual-core"><span class="core-bar h1"></span><span class="core-bar h2"></span><span class="core-bar h3"></span><span class="core-bar h4"></span></div></div></div>
-<div class="section-heading"><div><div class="eyebrow">نمای کلی</div><h2>وضعیت سامانه</h2></div><span class="section-note">اطلاعات لحظه‌ای پایگاه داده</span></div>
-<div class="payment-kpi-grid"><div class="payment-kpi"><span>کالاهای فعال</span><strong>@Model.Parts</strong><small>اطلاعات پایه قطعات</small></div><div class="payment-kpi"><span>تامین‌کنندگان فعال</span><strong>@Model.Suppliers</strong><small>اعضای زنجیره تامین</small></div><div class="payment-kpi"><span>ارتباط‌های فعال</span><strong>@Model.Mappings</strong><small>قطعه–تامین‌کننده</small></div><div class="payment-kpi"><span>پارامترهای فعال</span><strong>@Model.Parameters</strong><small>سهم وزن‌دهی پرداخت</small></div></div>
-<div class="row g-3"><div class="col-lg-6"><div class="metric-card metric-main"><span>پرداخت‌های تایید شده</span><strong>@Model.ApprovedRuns</strong><small>دفعاتی که وارد تاریخچه مالی شده‌اند</small></div></div><div class="col-lg-6"><div class="metric-card"><span>جمع مبلغ تخصیص‌یافته تاییدشده</span><strong>@Model.TotalAllocated.ToString("N0")</strong><small>واحد مبالغ مطابق هر دوره پرداخت</small></div></div></div>
+@model Indamin.Payment.Services.FinancialDashboardData
+@using Indamin.Payment.Data
+@{
+    ViewData["Title"]="داشبورد مدیریت";
+    var maxMix=Model.PaymentTypes.GrandTotal>0?Model.PaymentTypes.GrandTotal:1;
+    var topSuppliers=Model.Suppliers.Take(8).ToList();
+}
+<div class="dashboard-hero">
+ <div class="hero-copy">
+  <div class="eyebrow">مرکز مدیریت مالی زنجیره تامین</div>
+  <h1>داشبورد مالی پرداخت تامین‌کنندگان</h1>
+  <p>تصویر یکپارچه‌ای از مطالبات، پرداخت‌های محاسباتی، پرداخت‌های غیرمحاسباتی و وضعیت جاری زنجیره تامین.</p>
+  <div class="hero-actions">
+   @if(User.HasClaim("Permission","Payment.Calculate")){<a class="btn btn-main btn-lg" href="/PaymentWizard">محاسبه و تخصیص پرداخت</a>}
+   @if(User.HasClaim("Permission","Payment.NonCalculated")){<a class="btn btn-light-outline btn-lg" href="/NonCalculatedPayment">پرداخت غیرمحاسباتی</a>}
+   @if(User.HasClaim("Permission","Reports.View")){<a class="btn btn-light-outline btn-lg" href="/Reports">گزارش‌های مالی</a>}
+  </div>
+ </div>
+ <div class="hero-visual"><div class="visual-ring ring-one"></div><div class="visual-ring ring-two"></div><div class="visual-core"><span class="core-bar h1"></span><span class="core-bar h2"></span><span class="core-bar h3"></span><span class="core-bar h4"></span></div></div>
+</div>
+
+<div class="section-heading"><div><div class="eyebrow">نمای مالی</div><h2>وضعیت لحظه‌ای پرداخت‌ها</h2></div><span class="section-note">@Model.RunCount نوبت فعال ثبت‌شده</span></div>
+<div class="payment-kpi-grid">
+ <div class="payment-kpi"><span>مانده کل مطالبات</span><strong>@Model.Remaining.ToString("N0")</strong><small>استقراری + جاری</small></div>
+ <div class="payment-kpi"><span>کل پرداخت انجام‌شده</span><strong>@Model.TotalPaid.ToString("N0")</strong><small>تمام پرداخت‌های فعال</small></div>
+ <div class="payment-kpi"><span>تخصیص از محاسبات</span><strong>@Model.PaymentTypes.Calculated.ToString("N0")</strong><small>@((Model.PaymentTypes.GrandTotal>0?Model.PaymentTypes.Calculated/Model.PaymentTypes.GrandTotal*100:0).ToString("0.0"))٪ از کل پرداخت</small></div>
+ <div class="payment-kpi"><span>پرداخت غیرمحاسباتی</span><strong>@Model.PaymentTypes.NonCalculatedTotal.ToString("N0")</strong><small>@Model.PaymentOrderedRuns نوبت دستورپرداخت‌شده</small></div>
+</div>
+
+<div class="row g-3 mt-1">
+ <div class="col-xl-7">
+  <div class="form-panel">
+   <div class="panel-title"><div><h4>ترکیب پرداخت‌های فعال</h4><span>تفکیک محاسباتی و انواع پرداخت غیرمحاسباتی</span></div><span class="validation-chip validation-ok">جمع @Model.PaymentTypes.GrandTotal.ToString("N0") ریال</span></div>
+   <div class="payment-mix">
+    <div class="mix-row"><div><span>محاسبه تخصیص مبلغ</span><b>@Model.PaymentTypes.Calculated.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@((Model.PaymentTypes.Calculated/maxMix*100).ToString("0.##",System.Globalization.CultureInfo.InvariantCulture))%"></div></div></div>
+    <div class="mix-row"><div><span>نقدی</span><b>@Model.PaymentTypes.Cash.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@((Model.PaymentTypes.Cash/maxMix*100).ToString("0.##",System.Globalization.CultureInfo.InvariantCulture))%"></div></div></div>
+    <div class="mix-row"><div><span>واگذاری چک</span><b>@Model.PaymentTypes.Check.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@((Model.PaymentTypes.Check/maxMix*100).ToString("0.##",System.Globalization.CultureInfo.InvariantCulture))%"></div></div></div>
+    <div class="mix-row"><div><span>واگذاری خودرو</span><b>@Model.PaymentTypes.Vehicle.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@((Model.PaymentTypes.Vehicle/maxMix*100).ToString("0.##",System.Globalization.CultureInfo.InvariantCulture))%"></div></div></div>
+    <div class="mix-row"><div><span>واگذاری مواداولیه</span><b>@Model.PaymentTypes.RawMaterial.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@((Model.PaymentTypes.RawMaterial/maxMix*100).ToString("0.##",System.Globalization.CultureInfo.InvariantCulture))%"></div></div></div>
+    <div class="mix-row"><div><span>معرفی نامه</span><b>@Model.PaymentTypes.IntroductionLetter.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@((Model.PaymentTypes.IntroductionLetter/maxMix*100).ToString("0.##",System.Globalization.CultureInfo.InvariantCulture))%"></div></div></div>
+    <div class="mix-row"><div><span>حد اعتباری</span><b>@Model.PaymentTypes.CreditLimit.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@((Model.PaymentTypes.CreditLimit/maxMix*100).ToString("0.##",System.Globalization.CultureInfo.InvariantCulture))%"></div></div></div>
+   </div>
+  </div>
+ </div>
+ <div class="col-xl-5">
+  <div class="form-panel h-100">
+   <div class="panel-title"><div><h4>پوشش کل مطالبات</h4><span>پرداخت‌های فعال نسبت به مبنای مطالبات تاریخی</span></div><span class="priority-pill">@((Model.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</span></div>
+   <div class="coverage-visual"><div class="coverage-ring" style="--coverage:@((Model.Coverage*100m).ToString("0.##",System.Globalization.CultureInfo.InvariantCulture))%;"><div><strong>@((Model.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</strong><span>پوشش</span></div></div><div class="coverage-copy"><b>@Model.TotalPaid.ToString("N0")</b><span>پرداخت شده</span><b>@Model.Remaining.ToString("N0")</b><span>مانده</span></div></div>
+  </div>
+ </div>
+</div>
+
+<div class="form-panel mt-3">
+ <div class="panel-title"><div><h4>مرور تامین‌کنندگان</h4><span>مرتب‌سازی بر اساس شاخص تحلیل مالی؛ با کلیک به پروفایل تحلیلی تامین‌کننده بروید.</span></div>@if(User.HasClaim("Permission","Reports.SupplierOverview")){<a class="btn btn-outline-primary" href="/SupplierOverview">مرور تامین‌کننده</a>}</div>
+ <div class="table-responsive"><table class="table modern-table"><thead><tr><th>تامین‌کننده</th><th>استقراری</th><th>جاری</th><th>پرداخت محاسباتی</th><th>غیرمحاسباتی</th><th>کل پرداخت</th><th>مانده</th><th>پوشش</th><th>شاخص</th><th>عملیات</th></tr></thead><tbody>
+ @foreach(var x in topSuppliers){<tr><td class="fw-bold">@x.SupplierTitle</td><td>@x.InitialClaim.ToString("N0")</td><td>@x.CurrentClaims.ToString("N0")</td><td>@x.CalculatedPaid.ToString("N0")</td><td>@x.NonCalculatedTotal.ToString("N0")</td><td>@x.TotalPaid.ToString("N0")</td><td class="amount-emphasis">@x.Remaining.ToString("N0")</td><td>@((x.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</td><td><span class="priority-pill">@x.Priority</span></td><td>@if(User.HasClaim("Permission","Reports.SupplierOverview")){<a class="btn btn-sm btn-outline-primary" href="/SupplierOverview/Index/@x.SupplierId">مشاهده</a>}</td></tr>}
+ </tbody></table></div>
+</div>
+
+<div class="row g-3 mt-1">
+ <div class="col-xl-7"><div class="form-panel"><div class="panel-title"><div><h4>تازه‌ترین پرداخت‌ها</h4><span>آخرین وضعیت ثبت‌شده در سیستم</span></div></div><div class="recent-runs">@foreach(var x in Model.Trend.OrderByDescending(x=>x.RunId).Take(8)){<a href="/PaymentWizard/Details/@x.RunId" class="recent-run"><span>#@x.RunId</span><div><b>@x.Title</b><small>@x.Date · @(x.RunType==PaymentRunType.Calculated?"محاسباتی":"غیرمحاسباتی") · @(x.Status==PaymentRunStatus.PaymentOrdered?"دستور پرداخت شده":"تایید شده")</small></div><strong>@x.Amount.ToString("N0")</strong></a>}</div></div></div>
+ <div class="col-xl-5"><div class="form-panel"><div class="panel-title"><div><h4>مطالبات باز به تفکیک کالا</h4><span>کالاهای دارای مانده جاری</span></div></div><div class="report-bars">@foreach(var x in Model.Parts.Take(8)){<div class="report-bar-row"><div><span>@x.PartTitle</span><b>@x.Remaining.ToString("N0")</b></div><div class="progress"><div class="progress-bar" style="width:@((x.Remaining/Math.Max(1,Model.Remaining)*100).ToString("0.##",System.Globalization.CultureInfo.InvariantCulture))%"></div></div></div>}</div></div></div>
+</div>
