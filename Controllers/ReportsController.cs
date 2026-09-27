@@ -60,7 +60,7 @@ public class ReportsController(AppDbContext db) : Controller
   var remaining=suppliers.Sum(x=>x.Remaining);
   var maxRemainingSupplier=suppliers.Select(x=>x.Remaining).DefaultIfEmpty(1).Max();
   var maxRemainingPart=parts.Select(x=>x.Remaining).DefaultIfEmpty(1).Max();
-  suppliers=suppliers.Select(x=>x with{Priority=PriorityScore(x.Remaining,maxRemainingSupplier,x.AgeRatio,x.Coverage,x.Overdue,x.Count)}).ToList();
+  suppliers=suppliers.Select(x=>x with{Priority=PriorityScore(x.Remaining,maxRemainingSupplier,x.AgeRatio,x.Coverage,x.Overdue,x.Count)}).OrderByDescending(x=>x.Priority).ThenByDescending(x=>x.Remaining).ThenBy(x=>x.Title).ToList();
   parts=parts.Select(x=>x with{Priority=PriorityScore(x.Remaining,maxRemainingPart,x.AgeRatio,x.Coverage,x.Overdue,x.Count)}).ToList();
 
   var status=activeRuns.GroupBy(x=>x.Status).ToDictionary(g=>g.Key,g=>g.Count());
