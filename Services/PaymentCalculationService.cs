@@ -15,6 +15,7 @@ public class PaymentCalculationService(AppDbContext db)
             throw new InvalidOperationException("مبلغ قابل تخصیص نمی‌تواند منفی باشد.");
 
         var settings = await LoadSystemParametersAsync();
+        s.SystemParameterValues = settings.ToDictionary(x => x.Key, x => x.Value.Value);
         ApplySystemSettingsToState(s, settings);
 
         var parameters = await db.PaymentParameters.Where(x => x.IsActive)
@@ -153,10 +154,14 @@ public class PaymentCalculationService(AppDbContext db)
         return s;
     }
 
-    public async Task RecalculateAllocationAsync(PaymentWizardState s)
+    public Task RecalculateAllocationAsync(PaymentWizardState s)
     {
-        var settings = await LoadSystemParametersAsync();
-        ApplySystemSettingsToState(s, settings);
+        // محاسبه مجدد باید با همان پارامترهایی انجام شود که هنگام شروع
+        // همین محاسبه در State/Snapshot ثبت شده‌اند، نه با مقادیر جدید اطلاعات پایه.
+        ValidateShares(s.CalculatedInitialSharePercent, s.CalculatedCurrentSharePercent, "پرداخت محاسباتی");
+        if (s.MinimumEffectiveDebtAge < 0 || s.MinimumAllocationAmount < 0)
+            throw new InvalidOperationException("حد سن بدهی موثر و حداقل مبلغ تخصیص نمی‌توانند منفی باشند.");
+        EnsureRounding(s.AllocationRounding);
 
         foreach (var row in s.Rows)
         {
