@@ -363,7 +363,9 @@ public class PaymentCalculationService(AppDbContext db)
         }
 
         AllocateCalculatedBudget(target, rows, initialSharePercent, currentSharePercent, minAge, 0, rounding);
+        var assigned = Math.Round(rows.Sum(x => x.AllocatedAmount), 2);
         foreach (var row in rows) row.WeightedScore = originalWeights[row];
+        if (target > 0 && assigned + .005m < target) throw new InvalidOperationException($"مبلغ نهایی تامین‌کننده با محدودیت سن بدهی، مانده مطالبات یا رندینگ به طور کامل قابل تسهیم نیست. مبلغ قابل تخصیص {assigned:N0} ریال است.");
     }
 
     public static ClaimPaymentSplit SplitByShares(decimal total, decimal initialAvailable, decimal currentAvailable, decimal initialSharePercent, decimal currentSharePercent)
