@@ -607,8 +607,10 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         var rows = await db.PaymentRunSupplierSummaries.Where(x => x.PaymentRunId == id).OrderByDescending(x => x.AllocatedAmount)
             .Select(x => new { x.SupplierTitle, x.AllocatedAmount, x.InitialClaimAllocatedAmount, x.CurrentClaimAllocatedAmount, x.InvoiceCount, x.PaymentType }).ToListAsync();
         return File(excel.SupplierSummary(rows.Select(x => (
-            x.SupplierTitle, x.AllocatedAmount, x.InvoiceCount))), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"supplier-summary-{id}.xlsx");
+            x.SupplierTitle, x.AllocatedAmount, x.InitialClaimAllocatedAmount, x.CurrentClaimAllocatedAmount, x.InvoiceCount, PaymentTypeTitle(x.PaymentType)))), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"supplier-summary-{id}.xlsx");
     }
+
+    static string PaymentTypeTitle(NonCalculatedPaymentType? type) => type switch { NonCalculatedPaymentType.Cash => "نقدی", NonCalculatedPaymentType.CheckTransfer => "واگذاری چک", NonCalculatedPaymentType.VehicleTransfer => "واگذاری خودرو", NonCalculatedPaymentType.RawMaterialTransfer => "واگذاری مواداولیه", NonCalculatedPaymentType.IntroductionLetter => "معرفی نامه", NonCalculatedPaymentType.CreditLimit => "حد اعتباری", _ => "" };
 
     [Authorize(Policy = SecurityPermissions.PaymentOrderCreate)]
     [HttpPost]
