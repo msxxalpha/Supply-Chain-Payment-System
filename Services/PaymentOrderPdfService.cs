@@ -22,9 +22,6 @@ public class PaymentOrderPdfService(IConfiguration configuration,IWebHostEnviron
   return path;
 }
 async Task<byte[]> GenerateBytesAsync(CompanySettings company,PaymentRun run,IReadOnlyList<PaymentRunSupplierSummary> summaries){
-  return await GenerateBytesAsync(company,run,summaries);
- }
- async Task<byte[]> GenerateBytesAsync(CompanySettings company,PaymentRun run,IReadOnlyList<PaymentRunSupplierSummary> summaries){
   var browserPath=await ResolveBrowserAsync();
   await using var browser=await Puppeteer.LaunchAsync(new LaunchOptions{Headless=true,ExecutablePath=browserPath,Args=["--no-sandbox","--disable-gpu","--font-render-hinting=none"]});
   await using var page=await browser.NewPageAsync();
