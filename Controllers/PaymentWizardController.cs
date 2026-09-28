@@ -719,8 +719,9 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         if (run == null) return NotFound();
         if (run.Status != PaymentRunStatus.PaymentOrdered) throw new InvalidOperationException("این پرداخت هنوز به دستور پرداخت تبدیل نشده است.");
         var company = await db.CompanySettings.SingleOrDefaultAsync(x => x.Id == 1) ?? new CompanySettings();
-        var bytes = await pdf.GenerateAsync(company, run, run.SupplierSummaries);
-        return File(bytes, "application/pdf", $"payment-order-{run.PaymentOrderNumber ?? run.Id.ToString()}.pdf");
+        var path = await pdf.GenerateAndSaveAsync(company, run, run.SupplierSummaries);
+        var fileName = Path.GetFileName(path);
+        return PhysicalFile(path, "application/pdf", fileName, enableRangeProcessing: true);
     }
 
     [Authorize(Policy = SecurityPermissions.PaymentDelete)]
