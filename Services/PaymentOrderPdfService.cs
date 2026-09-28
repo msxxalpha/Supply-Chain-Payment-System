@@ -6,18 +6,43 @@ using PuppeteerSharp.Media;
 namespace Indamin.Payment.Services;
 public class PaymentOrderPdfService(IConfiguration configuration,IWebHostEnvironment environment){
  static readonly CultureInfo Fa=new("fa-IR");
- public async Task<byte[]> GenerateAsync(CompanySettings company,PaymentRun run,IReadOnlyList<PaymentRunSupplierSummary> summaries){
+ public async Task<string> GenerateAndSaveAsync(CompanySettings company,PaymentRun run,IReadOnlyList<PaymentRunSupplierSummary> summaries){
   var browserPath=await ResolveBrowserAsync();
   await using var browser=await Puppeteer.LaunchAsync(new LaunchOptions{Headless=true,ExecutablePath=browserPath,Args=["--no-sandbox","--disable-gpu","--font-render-hinting=none"]});
   await using var page=await browser.NewPageAsync();
   await page.SetViewportAsync(new ViewPortOptions{Width=1240,Height=1754});
   await page.SetContentAsync(BuildHtml(company,run,summaries),new NavigationOptions{WaitUntil=[WaitUntilNavigation.Load],Timeout=30000});
-  await page.WaitForFunctionAsync("document.fonts ? document.fonts.status === 'loaded' : true",new WaitForFunctionOptions{Timeout=15000});
+  var bytes=await page.PdfDataAsync(new PdfOptions{Format=PaperFormat.A4,PrintBackground=true,PreferCSSPageSize=true,MarginOptions=new MarginOptions{Top="12mm",Bottom="14mm",Left="12mm",Right="12mm"}});
+  var folder=Path.Combine(environment.WebRootPath??Path.Combine(environment.ContentRootPath,"wwwroot"),"generated","payment-orders");
+  Directory.CreateDirectory(folder);
+  var safe=(run.PaymentOrderNumber??$"payment-order-{run.Id}").Replace("/","-").Replace("\\","-");
+  var fileName=$"{safe}-{DateTime.Now:yyyyMMdd-HHmmss}.pdf";
+  var path=Path.Combine(folder,fileName);
+  await File.WriteAllBytesAsync(path,bytes);
+  return path;
+}
+async Task<byte[]> GenerateBytesAsync(CompanySettings company,PaymentRun run,IReadOnlyList<PaymentRunSupplierSummary> summaries){
+  return await GenerateBytesAsync(company,run,summaries);
+ }
+ async Task<byte[]> GenerateBytesAsync(CompanySettings company,PaymentRun run,IReadOnlyList<PaymentRunSupplierSummary> summaries){
+  var browserPath=await ResolveBrowserAsync();
+  await using var browser=await Puppeteer.LaunchAsync(new LaunchOptions{Headless=true,ExecutablePath=browserPath,Args=["--no-sandbox","--disable-gpu","--font-render-hinting=none"]});
+  await using var page=await browser.NewPageAsync();
+  await page.SetViewportAsync(new ViewPortOptions{Width=1240,Height=1754});
+  await page.SetContentAsync(BuildHtml(company,run,summaries),new NavigationOptions{WaitUntil=[WaitUntilNavigation.Load],Timeout=30000});
   return await page.PdfDataAsync(new PdfOptions{Format=PaperFormat.A4,PrintBackground=true,PreferCSSPageSize=true,MarginOptions=new MarginOptions{Top="12mm",Bottom="14mm",Left="12mm",Right="12mm"}});
  }
  async Task<string> ResolveBrowserAsync(){
   var configured=configuration["PaymentOrderPdf:BrowserExecutablePath"]??Environment.GetEnvironmentVariable("PUPPETEER_EXECUTABLE_PATH");
   if(!string.IsNullOrWhiteSpace(configured)&&File.Exists(configured))return configured;
+  var candidates=new[]{
+    Environment.GetEnvironmentVariable("ProgramFiles")+@"\Google\Chrome\Application\chrome.exe",
+    Environment.GetEnvironmentVariable("ProgramFiles")+@"\Microsoft\Edge\Application\msedge.exe",
+    Environment.GetEnvironmentVariable("ProgramFiles(x86)")+@"\Microsoft\Edge\Application\msedge.exe",
+    "/usr/bin/google-chrome","/usr/bin/chromium","/usr/bin/chromium-browser"
+  };
+  var localBrowser=candidates.FirstOrDefault(x=>!string.IsNullOrWhiteSpace(x)&&File.Exists(x));
+  if(!string.IsNullOrWhiteSpace(localBrowser)) return localBrowser;
   var cache=configuration["PaymentOrderPdf:BrowserCachePath"];
   if(string.IsNullOrWhiteSpace(cache))cache=Path.Combine(environment.ContentRootPath,"App_Data","Puppeteer");
   Directory.CreateDirectory(cache);
@@ -42,7 +67,7 @@ public class PaymentOrderPdfService(IConfiguration configuration,IWebHostEnviron
     rows.Append($"<tr><td>{n++}</td><td class='supplier'>{H(x.SupplierTitle)}</td><td>{x.InvoiceCount.ToString("N0",Fa)}</td><td>{Money(x.InitialClaimAllocatedAmount)}</td><td>{Money(x.CurrentClaimAllocatedAmount)}</td><td class='money'>{Money(x.AllocatedAmount)} {H(run.AmountUnit)}</td><td>{H(type)}</td><td>{share}٪</td></tr>"); }
   return $@"<!doctype html><html lang='fa' dir='rtl'><head><meta charset='utf-8'><style>
 @font-face{{font-family:Vazir;src:url('https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/Vazir-Regular.woff2') format('woff2');font-weight:100 900;font-style:normal}}
-*{{box-sizing:border-box}}html,body{{margin:0;padding:0}}body{{font-family:Vazir,Tahoma,Arial,sans-serif;color:#20374b;background:#fff;direction:rtl;font-size:11px}}@page{{size:A4;margin:12mm}}
+*{{box-sizing:border-box}}html,body{{margin:0;padding:0}}body{{font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#20374b;background:#fff;direction:rtl;font-size:11px}}@page{{size:A4;margin:12mm}}
 .page{{min-height:270mm;display:flex;flex-direction:column}}.header{{border-radius:14px;padding:18px 20px;background:linear-gradient(135deg,#102a43,#1f5f8b);color:#fff;display:flex;justify-content:space-between;gap:18px;align-items:center}}.brand{{display:flex;align-items:center;gap:12px}}.logo{{width:62px;height:62px;border-radius:12px;background:#fff;padding:5px;object-fit:contain}}.brand h1{{font-size:17px;margin:0 0 5px;color:#fff}}.brand p{{font-size:9px;margin:0;color:#d8e7f0}}.order-badge{{min-width:150px;text-align:center;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);border-radius:12px;padding:9px}}.order-badge b{{display:block;font-size:13px}}.order-badge span{{display:block;font-size:9px;color:#d3e2eb;margin-top:4px}}
 .meta{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 16px}}.meta-card{{border:1px solid #dfe8ee;background:#f7fafc;border-radius:10px;padding:9px 11px}}.meta-card label{{display:block;color:#8295a6;font-size:8px;margin-bottom:4px}}.meta-card strong{{display:block;color:#102a43;font-size:10px;line-height:1.7}}
 .section-title{{display:flex;align-items:center;justify-content:space-between;margin:7px 0 8px}}.section-title h2{{font-size:13px;color:#102a43;margin:0}}.section-title span{{font-size:8px;color:#8b9ca9}}table{{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border:1px solid #dfe8ee;border-radius:11px}}thead th{{background:#edf3f7;color:#4b6478;font-size:9px;padding:9px;border-bottom:1px solid #dfe8ee}}tbody td{{padding:9px;border-bottom:1px solid #edf1f4;font-size:9px;text-align:center}}tbody tr:last-child td{{border-bottom:0}}tbody tr:nth-child(even) td{{background:#fafcfd}}.supplier{{font-weight:800;text-align:right}}.money{{font-weight:900;color:#1f5f8b}}tfoot td{{padding:10px;background:#f3f7fa;font-weight:900;color:#102a43;border-top:2px solid #cddce5}}
