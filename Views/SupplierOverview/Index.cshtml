@@ -43,7 +43,7 @@ else
             <h1>@p.SupplierTitle</h1>
             <div class="supplier-profile-meta"><span>کد: @p.SupplierCode</span><span>حوزه فعالیت: @(p.Activities.Count==0?"تعریف نشده":string.Join("، ",p.Activities))</span><span>@p.MappingCount ارتباط فعال کالا</span></div>
         </div>
-        <div class="supplier-profile-badge"><span>پوشش</span><strong>@(p.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture)٪</strong></div>
+        <div class="supplier-profile-badge"><span>پوشش</span><strong>@((p.Coverage*100m).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture))٪</strong></div>
     </div>
 
     <div class="payment-kpi-grid mt-3">
