@@ -106,7 +106,7 @@ namespace Indamin.Payment.Controllers;
  public record ParametersVm(List<PaymentParameter> Rows);public record LookupVm(Dictionary<string,List<LookupValue>> Rows,List<string> Groups,string Group,string Tab,CompanySettings Company);
  static int NormalizePageSize(int value)=>value is 50 or 75 or 100 ? value : 25;
  public record PartsVm(List<Part> Rows,List<LookupValue> Types,HashSet<int> LockedIds,int TotalCount,int Page,int PageSize,string Search);
- public record SuppliersVm(List<Supplier> Rows,List<LookupValue> Activities,HashSet<int> LockedIds,HashSet<int> InitialClaimLockedIds,int TotalCount,int Page,int PageSize,string Search);public record SupplierClaimHistoryVm(Supplier Supplier,List<SupplierClaimHistory> Rows);public record SuppliersVm(List<Supplier> Rows,List<LookupValue> Activities,HashSet<int> LockedIds,HashSet<int> InitialClaimLockedIds);
+ public record SuppliersVm(List<Supplier> Rows,List<LookupValue> Activities,HashSet<int> LockedIds,HashSet<int> InitialClaimLockedIds,int TotalCount,int Page,int PageSize,string Search);public record SupplierClaimHistoryVm(Supplier Supplier,List<SupplierClaimHistory> Rows);
  public record MappingsVm(List<SupplierPart> Rows,List<Supplier> Suppliers,List<Part> Parts,HashSet<int> LockedIds,int TotalCount,int Page,int PageSize,string Search);
  public record EvaluationsVm(List<SupplierPart> Mappings,List<PaymentParameter> Parameters,List<SupplierPartEvaluation> Scores,int TotalCount,int Page,int PageSize,string Search);
 }
