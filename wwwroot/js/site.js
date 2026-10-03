@@ -36,3 +36,5 @@ document.addEventListener("DOMContentLoaded",()=>{
   select.addEventListener("change",()=>{const selected=select.selectedOptions[0];if(selected&&!input.value)input.placeholder=selected.textContent.trim();});
  });
 });
+
+document.addEventListener("DOMContentLoaded",()=>{document.querySelectorAll("[data-edit-toggle]").forEach(btn=>btn.addEventListener("click",()=>{const row=document.getElementById(btn.dataset.editToggle);if(!row)return;const open=row.classList.toggle("is-open");row.style.display=open?"table-row":"none";btn.textContent=open?"بستن ویرایش":"ویرایش";}));document.querySelectorAll(".edit-row").forEach(row=>row.style.display="none");});
