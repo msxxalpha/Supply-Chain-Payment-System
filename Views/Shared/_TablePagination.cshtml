@@ -1,0 +1,47 @@
+@model (int Page, int TotalPages, int PageSize, string Search, string BaseUrl)
+
+@{
+    var search = Model.Search ?? "";
+    var encodedSearch = Uri.EscapeDataString(search);
+    var previousPage = Math.Max(1, Model.Page - 1);
+    var nextPage = Math.Min(Model.TotalPages, Model.Page + 1);
+    var previousUrl = $"{Model.BaseUrl}?page={previousPage}&pageSize={Model.PageSize}&q={encodedSearch}";
+    var nextUrl = $"{Model.BaseUrl}?page={nextPage}&pageSize={Model.PageSize}&q={encodedSearch}";
+}
+
+<div class="table-pagination" dir="ltr" aria-label="صفحه‌بندی جدول">
+    <div class="table-pagination-nav">
+        @if (Model.Page <= 1)
+        {
+            <span class="table-pagination-arrow disabled" aria-disabled="true" aria-label="صفحه قبل">‹</span>
+        }
+        else
+        {
+            <a class="table-pagination-arrow" href="@previousUrl" aria-label="صفحه قبل">‹</a>
+        }
+
+        <span class="table-pagination-current">@Model.Page</span>
+        <span class="table-pagination-total">of @Model.TotalPages</span>
+
+        @if (Model.Page >= Model.TotalPages)
+        {
+            <span class="table-pagination-arrow disabled" aria-disabled="true" aria-label="صفحه بعد">›</span>
+        }
+        else
+        {
+            <a class="table-pagination-arrow" href="@nextUrl" aria-label="صفحه بعد">›</a>
+        }
+    </div>
+
+    <div class="table-pagination-jump" dir="rtl">
+        <span>صفحه</span>
+        <select class="table-pagination-select" aria-label="انتخاب شماره صفحه"
+                onchange="window.location.href='@Model.BaseUrl?page='+this.value+'&pageSize=@Model.PageSize&q=@encodedSearch'">
+            @for (var i = 1; i <= Model.TotalPages; i++)
+            {
+                <option value="@i" selected="@(i == Model.Page)">@i</option>
+            }
+        </select>
+        <span>از @Model.TotalPages</span>
+    </div>
+</div>
