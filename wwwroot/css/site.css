@@ -100,8 +100,14 @@ h1,h2,h3,h4,h5,h6{color:var(--navy);font-weight:900}h1{font-size:30px}h2{font-si
 
 
 /* Server-side table pagination */
-.pagination-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:nowrap;margin-top:14px;direction:rtl}
-.pagination-links{display:flex;align-items:center;justify-content:flex-start;gap:4px;flex-wrap:nowrap;white-space:nowrap;direction:ltr}
-.pagination-links .page-link{display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 10px;border:1px solid var(--bs-border-color,#dee2e6);border-radius:6px;text-decoration:none;line-height:1;flex:0 0 auto}
-.pagination-links .page-link.active{font-weight:700}
-@media(max-width:700px){.pagination-bar{overflow-x:auto;justify-content:flex-start}.pagination-bar>span{flex:0 0 auto}}
+.table-pagination{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:12px;padding:8px 2px;min-width:0}
+.table-pagination-nav{display:flex;align-items:center;gap:5px;direction:ltr;white-space:nowrap}
+.table-pagination-arrow,.table-pagination-current{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid #e0e6eb;border-radius:8px;background:#fff;color:#536b7d;text-decoration:none;line-height:1;font-size:20px;flex:0 0 auto}
+.table-pagination-arrow:hover{background:#f5f8fa;color:var(--navy)}
+.table-pagination-arrow.disabled{color:#c8d1d8;background:#f8fafb;cursor:default}
+.table-pagination-current{background:#4d4d4d;border-color:#4d4d4d;color:#fff;font-size:11px;font-weight:800}
+.table-pagination-total{padding:0 7px;color:#8998a5;font-size:10px;white-space:nowrap}
+.table-pagination-jump{display:flex;align-items:center;gap:7px;color:#7e8e9b;font-size:10px;white-space:nowrap}
+.table-pagination-select{width:58px;height:36px;padding:0 7px;border:1px solid #d8e0e6;border-radius:8px;background:#fff;color:#526b7c;text-align:center;font-size:11px;cursor:pointer}
+.table-pagination-select:focus{outline:none;border-color:#8eb2c7;box-shadow:0 0 0 3px rgba(45,127,179,.10)}
+@media(max-width:700px){.table-pagination{gap:10px;overflow-x:auto}.table-pagination-jump{margin-left:auto}.table-pagination-nav,.table-pagination-jump{flex:0 0 auto}}
