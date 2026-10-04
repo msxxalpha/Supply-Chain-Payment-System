@@ -62,6 +62,8 @@
 
 <div class="table-panel">
   <form class="toolbar" method="get" action="/Setup/Mappings"><input class="form-control" name="q" value="@Model.Search" placeholder="جست‌وجوی تامین‌کننده، کالا یا کد..."><select class="form-select page-size-select" name="pageSize" onchange="this.form.submit()"><option value="25" selected="@(Model.PageSize==25)">25 ردیف</option><option value="50" selected="@(Model.PageSize==50)">50 ردیف</option><option value="75" selected="@(Model.PageSize==75)">75 ردیف</option><option value="100" selected="@(Model.PageSize==100)">100 ردیف</option></select><button class="btn btn-outline-primary">جست‌وجو</button></form>
+  @{var totalPages=Math.Max(1,(int)Math.Ceiling(Model.TotalCount/(double)Model.PageSize));}
+  @await Html.PartialAsync("_TablePagination", (Model.Page, totalPages, Model.PageSize, Model.Search ?? "", "/Setup/Mappings"))
   <div class="table-responsive"><table id="maps" class="table modern-table">
     <thead><tr><th>تامین‌کننده</th><th>کالا</th><th>ظرفیت</th><th>مهلت تسویه</th><th>وضعیت</th><th>عملیات</th></tr></thead>
     <tbody>
@@ -84,5 +86,5 @@
     }
     </tbody>
   </table></div>
+  @await Html.PartialAsync("_TablePagination", (Model.Page, totalPages, Model.PageSize, Model.Search ?? "", "/Setup/Mappings"))
 </div>
-@{var totalPages=Math.Max(1,(int)Math.Ceiling(Model.TotalCount/(double)Model.PageSize));}<div class="pagination-bar"><span>نمایش @Model.Rows.Count از @Model.TotalCount ردیف</span><div class="pagination-links">@for(var i=1;i<=totalPages;i++){if(i==Model.Page){<span class="page-link active">@i</span>}else{<a class="page-link" href="/Setup/Mappings?page=@i&pageSize=@Model.PageSize&q=@Uri.EscapeDataString(Model.Search??"")">@i</a>}}</div></div>
