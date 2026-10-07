@@ -14,6 +14,10 @@ public class FinancialReportingService(AppDbContext db)
 
         var parts = BuildPartRows(context.LatestInvoices, context.ActiveInvoices);
         var totals = BuildPaymentTypeTotals(context.FinancialRuns);
+        var currentMethodValue = await db.SystemParameters.AsNoTracking().Where(x => x.Code == "CURRENT_CLAIM_CALC_METHOD" && x.IsActive).Select(x => (decimal?)x.Value).FirstOrDefaultAsync() ?? 1m;
+        var currentMethod = (CurrentClaimCalculationMethod)(int)currentMethodValue;
+        var priceListPricedReceiptCount = context.FinancialRuns.SelectMany(x => x.Invoices).Count(x => x.DebtCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList && x.PriceListItemId.HasValue);
+        var warehouseSourceRunCount = context.FinancialRuns.Count(x => x.ReceiptSource == PaymentReceiptSource.WarehouseSubsystem);
 
         var original = supplierRows.Sum(x => x.InitialClaim + x.CurrentClaims);
         var paid = supplierRows.Sum(x => x.TotalPaid);
@@ -36,7 +40,7 @@ public class FinancialReportingService(AppDbContext db)
             original, paid, remaining, coverage,
             totals, supplierRows, parts,
             BuildSupplierPartRows(context.LatestInvoices, context.ActiveInvoices),
-            trend);
+            trend, currentMethod, priceListPricedReceiptCount, warehouseSourceRunCount);
     }
 
     public async Task<SupplierDashboardData?> GetSupplierAsync(int supplierId)
@@ -443,7 +447,10 @@ public record FinancialDashboardData(
     List<SupplierFinanceRow> Suppliers,
     List<PartFinanceRow> Parts,
     List<SupplierPartFinanceRow> SupplierParts,
-    List<FinancialRunRow> Trend);
+    List<FinancialRunRow> Trend,
+    CurrentClaimCalculationMethod CurrentClaimCalculationMethod,
+    int PriceListPricedReceiptCount,
+    int WarehouseSourceRunCount);
 
 public record PaymentTypeTotals(
     decimal Calculated, decimal Cash, decimal Check, decimal Vehicle,
