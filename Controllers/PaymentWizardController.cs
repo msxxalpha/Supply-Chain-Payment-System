@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Indamin.Payment.Controllers;
 
 [Authorize]
-public class PaymentWizardController(AppDbContext db, ExcelService excel, PaymentCalculationService calc, PaymentOrderPdfService pdf) : Controller
+public class PaymentWizardController(AppDbContext db, ExcelService excel, PaymentCalculationService calc, PaymentOrderPdfService pdf, InputQueryService inputQueries) : Controller
 {
     const string SessionKey = "PaymentWizardState";
     int UserId => int.TryParse(User.FindFirst("UserId")?.Value, out var id) ? id : 0;
@@ -47,6 +47,8 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             s.PeriodFromJalali = PersianDateService.ToJalali(from);
             s.PeriodToJalali = PersianDateService.ToJalali(to);
             s.Title = string.IsNullOrWhiteSpace(s.Title) ? "محاسبه تخصیص تامین‌کنندگان" : s.Title.Trim();
+            if (s.ReceiptSource is not PaymentReceiptSource.Excel and not PaymentReceiptSource.WarehouseSubsystem)
+                throw new InvalidOperationException("منبع اطلاعات رسیدها نامعتبر است.");
             s.Step = 2;
             Save(s);
             return RedirectToAction(nameof(Step2));
@@ -74,7 +76,11 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
     {
         var s = Load();
         if (s == null) return RedirectToAction(nameof(Step1));
-        s.ImportErrorGroups = [];
+        if (s.ReceiptSource != PaymentReceiptSource.Excel)
+        {
+            TempData["Error"] = "در این نوبت، منبع اطلاعات رسیدها «زیرسیستم انبار» انتخاب شده است.";
+            return RedirectToAction(nameof(Step2));
+        }
 
         if (file == null || file.Length == 0)
         {
@@ -86,54 +92,124 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         try
         {
             var rows = excel.ReadPaymentInvoices(file.OpenReadStream(), PersianDateService.Parse, out var errors);
+            return await ProcessImportedRowsAsync(s, rows, errors, Path.GetFileName(file.FileName), PaymentReceiptSource.Excel);
+        }
+        catch (Exception ex)
+        {
+            s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "system", Title = "خطای پردازش فایل", Errors = [ex.Message] }];
+            Save(s);
+            return View("Step2", s);
+        }
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> LoadWarehouse()
+    {
+        var s = Load();
+        if (s == null) return RedirectToAction(nameof(Step1));
+        if (s.ReceiptSource != PaymentReceiptSource.WarehouseSubsystem)
+        {
+            TempData["Error"] = "برای دریافت مستقیم، ابتدا در گام اول منبع «زیرسیستم انبار» را انتخاب کنید.";
+            return RedirectToAction(nameof(Step1));
+        }
+
+        try
+        {
             var from = PersianDateService.Parse(s.PeriodFromJalali);
             var to = PersianDateService.Parse(s.PeriodToJalali);
-            var outside = rows.Where(x => x.ReceiptDate.Date < from.Date || x.ReceiptDate.Date > to.Date).ToList();
-            if (outside.Count > 0) errors.Add($"{outside.Count} رکورد خارج از بازه زمانی تعیین‌شده است.");
-
-            s.SourceFileName = Path.GetFileName(file.FileName);
-            s.MissingParts = [];
-            s.MissingSuppliers = [];
-
-            var parts = await db.Parts.Where(x => x.IsActive).AsNoTracking().Select(x => new { x.Id, x.Title }).ToListAsync();
-            var suppliers = await db.Suppliers.Where(x => x.IsActive).AsNoTracking().Select(x => new { x.Id, x.Title }).ToListAsync();
-            var partByName = parts.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
-            var supplierByName = suppliers.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
-
-            s.MissingParts = rows.Select(x => x.PartTitle.Trim()).Where(x => x != "" && !partByName.ContainsKey(Normalize(x))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            s.MissingSuppliers = rows.Select(x => x.SupplierTitle.Trim()).Where(x => x != "" && !supplierByName.ContainsKey(Normalize(x))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-
-            errors.AddRange(s.MissingParts.Select(x => $"کالا «{x}» در اطلاعات پایه تعریف نشده یا فعال نیست."));
-            errors.AddRange(s.MissingSuppliers.Select(x => $"تامین‌کننده «{x}» در اطلاعات پایه تعریف نشده یا فعال نیست."));
-
-            var activeMappings = await db.SupplierParts.Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
-                .AsNoTracking().Select(x => new { x.PartId, x.SupplierId }).ToListAsync();
-            var mappingKeys = activeMappings.Select(x => $"{x.PartId}:{x.SupplierId}").ToHashSet();
-            var mappingErrors = rows
-                .Where(x => partByName.ContainsKey(Normalize(x.PartTitle)) && supplierByName.ContainsKey(Normalize(x.SupplierTitle)))
-                .Select(x => new
-                {
-                    Part = x.PartTitle.Trim(),
-                    Supplier = x.SupplierTitle.Trim(),
-                    Key = $"{partByName[Normalize(x.PartTitle)].Id}:{supplierByName[Normalize(x.SupplierTitle)].Id}"
-                })
-                .Where(x => !mappingKeys.Contains(x.Key))
-                .Select(x => $"ارتباط فعال بین کالا «{x.Part}» و تامین‌کننده «{x.Supplier}» در اطلاعات پایه تعریف نشده است.")
-                .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            errors.AddRange(mappingErrors);
-
-            if (errors.Count > 0)
+            var result = await inputQueries.ExecuteInventoryReceiptsAsync(from, to);
+            if (!result.Success)
             {
+                s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "warehouse-query", Title = "کوئری زیرسیستم انبار", Errors = result.Errors }];
                 s.Rows = [];
                 s.Parameters = [];
-                s.ImportedDebt = rows.Sum(x => x.DebtAmount);
-                s.RemainingDebt = rows.Sum(x => x.DebtAmount);
-                s.ImportErrorGroups = CategorizeImportErrors(errors);
                 Save(s);
                 return View("Step2", s);
             }
 
-            await calc.CalculateAsync(s, rows);
+            return await ProcessImportedRowsAsync(
+                s,
+                result.Rows,
+                [],
+                "زیرسیستم انبار؛ اطلاعات رسیدهای خرید انبار",
+                PaymentReceiptSource.WarehouseSubsystem);
+        }
+        catch (Exception ex)
+        {
+            s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "warehouse-query", Title = "اجرای کوئری زیرسیستم انبار", Errors = [ex.Message] }];
+            Save(s);
+            return View("Step2", s);
+        }
+    }
+
+    async Task<IActionResult> ProcessImportedRowsAsync(
+        PaymentWizardState s,
+        IReadOnlyList<ImportedPaymentInvoice> imported,
+        List<string> errors,
+        string sourceName,
+        PaymentReceiptSource source)
+    {
+        s.ImportErrorGroups = [];
+        s.ReceiptSource = source;
+        s.SourceFileName = sourceName;
+        s.ImportedReceipts = imported.ToList();
+        s.MissingParts = [];
+        s.MissingSuppliers = [];
+
+        var from = PersianDateService.Parse(s.PeriodFromJalali);
+        var to = PersianDateService.Parse(s.PeriodToJalali);
+        var outside = imported.Where(x => x.ReceiptDate.Date < from.Date || x.ReceiptDate.Date > to.Date).ToList();
+        if (outside.Count > 0)
+            errors.Add($"{outside.Count} رکورد خارج از بازه زمانی تعیین‌شده است.");
+
+        var parts = await db.Parts.Where(x => x.IsActive).AsNoTracking().Select(x => new { x.Id, x.Title }).ToListAsync();
+        var suppliers = await db.Suppliers.Where(x => x.IsActive).AsNoTracking().Select(x => new { x.Id, x.Title }).ToListAsync();
+        var partByName = parts.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
+        var supplierByName = suppliers.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
+
+        s.MissingParts = imported.Select(x => x.PartTitle.Trim()).Where(x => x != "" && !partByName.ContainsKey(Normalize(x))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        s.MissingSuppliers = imported.Select(x => x.SupplierTitle.Trim()).Where(x => x != "" && !supplierByName.ContainsKey(Normalize(x))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+
+        errors.AddRange(s.MissingParts.Select(x => $"کالا «{x}» در اطلاعات پایه تعریف نشده یا فعال نیست."));
+        errors.AddRange(s.MissingSuppliers.Select(x => $"تامین‌کننده «{x}» در اطلاعات پایه تعریف نشده یا فعال نیست."));
+
+        var activeMappings = await db.SupplierParts
+            .Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
+            .AsNoTracking()
+            .Select(x => new { x.PartId, x.SupplierId })
+            .ToListAsync();
+        var mappingKeys = activeMappings.Select(x => $"{x.PartId}:{x.SupplierId}").ToHashSet();
+        var mappingErrors = imported
+            .Where(x => partByName.ContainsKey(Normalize(x.PartTitle)) && supplierByName.ContainsKey(Normalize(x.SupplierTitle)))
+            .Select(x => new
+            {
+                Part = x.PartTitle.Trim(),
+                Supplier = x.SupplierTitle.Trim(),
+                Key = $"{partByName[Normalize(x.PartTitle)].Id}:{supplierByName[Normalize(x.SupplierTitle)].Id}"
+            })
+            .Where(x => !mappingKeys.Contains(x.Key))
+            .Select(x => $"ارتباط فعال بین کالا «{x.Part}» و تامین‌کننده «{x.Supplier}» در اطلاعات پایه تعریف نشده است.")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
+        errors.AddRange(mappingErrors);
+
+        if (errors.Count > 0)
+        {
+            s.Rows = [];
+            s.Parameters = [];
+            s.ImportedDebt = imported.Sum(x => x.DebtAmount);
+            s.RemainingDebt = imported.Sum(x => x.DebtAmount);
+            s.ImportErrorGroups = CategorizeImportErrors(errors);
+            Save(s);
+            return View("Step2", s);
+        }
+
+        try
+        {
+            await calc.CalculateAsync(s, imported);
             s.ImportErrorGroups = [];
             s.MissingParts = [];
             s.MissingSuppliers = [];
@@ -142,7 +218,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         }
         catch (Exception ex)
         {
-            s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "system", Title = "خطای پردازش فایل", Errors = [ex.Message] }];
+            s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "calculation", Title = "کنترل و محاسبه بدهی", Errors = [ex.Message] }];
             Save(s);
             return View("Step2", s);
         }
