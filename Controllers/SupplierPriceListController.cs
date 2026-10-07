@@ -82,7 +82,7 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
     }
 
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> AddPrice(int supplierId, int supplierPartId, decimal purchasePrice, string validFrom, string validTo)
+    public async Task<IActionResult> AddPrice(int supplierId, int supplierPartId, string purchasePrice, string validFrom, string validTo)
     {
         try
         {
@@ -91,21 +91,24 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
                 .SingleOrDefaultAsync(x => x.Id == supplierPartId && x.SupplierId == supplierId && x.IsActive);
 
             if (mapping == null) throw new InvalidOperationException("ارتباط کالا–تامین‌کننده انتخاب‌شده معتبر یا فعال نیست.");
+            var price = ParsePurchasePrice(purchasePrice);
             var from = PersianDateService.Parse(validFrom).Date;
             var to = PersianDateService.Parse(validTo).Date;
-            ValidatePrice(purchasePrice, from, to);
+            ValidatePrice(price, from, to);
+            await DeactivateConflictingPricesAsync(mapping.Id, from, to, price, null);
 
             db.SupplierPriceListItems.Add(new SupplierPriceListItem
             {
                 SupplierPartId = mapping.Id,
-                PurchasePrice = Math.Round(purchasePrice, 2),
+                PurchasePrice = Math.Round(price, 2),
                 ValidFrom = from,
                 ValidTo = to,
+                IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             });
             await db.SaveChangesAsync();
-            await LogAsync("CREATE", "SupplierPriceListItem", supplierPartId.ToString(), $"قیمت {purchasePrice:N2} برای {mapping.Part!.Title} / {mapping.Supplier!.Title}");
+            await LogAsync("CREATE", "SupplierPriceListItem", supplierPartId.ToString(), $"قیمت {price:N2} برای {mapping.Part!.Title} / {mapping.Supplier!.Title}");
             TempData["Result"] = "رکورد فهرست بها ثبت شد.";
         }
         catch (Exception ex)
@@ -116,7 +119,7 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
     }
 
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> EditPrice(long id, decimal purchasePrice, string validFrom, string validTo)
+    public async Task<IActionResult> EditPrice(long id, string purchasePrice, string validFrom, string validTo)
     {
         var row = await db.SupplierPriceListItems.Include(x => x.SupplierPart)
             .ThenInclude(x => x!.Supplier)
@@ -130,16 +133,19 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
             if (await IsUsedAsync(id))
                 throw new InvalidOperationException("این نرخ قبلاً در محاسبه پرداخت استفاده شده است و قابل ویرایش نیست.");
 
+            var price = ParsePurchasePrice(purchasePrice);
             var from = PersianDateService.Parse(validFrom).Date;
             var to = PersianDateService.Parse(validTo).Date;
-            ValidatePrice(purchasePrice, from, to);
+            ValidatePrice(price, from, to);
+            await DeactivateConflictingPricesAsync(row.SupplierPartId, from, to, price, row.Id);
 
-            row.PurchasePrice = Math.Round(purchasePrice, 2);
+            row.PurchasePrice = Math.Round(price, 2);
+            row.IsActive = true;
             row.ValidFrom = from;
             row.ValidTo = to;
             row.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
-            await LogAsync("UPDATE", "SupplierPriceListItem", id.ToString(), $"ویرایش نرخ {row.SupplierPart!.Part!.Title} / {row.SupplierPart.Supplier!.Title}");
+            await LogAsync("UPDATE", "SupplierPriceListItem", id.ToString(), $"ویرایش نرخ {price:N2} برای {row.SupplierPart!.Part!.Title} / {row.SupplierPart.Supplier!.Title}");
             TempData["Result"] = "رکورد فهرست بها به‌روزرسانی شد.";
         }
         catch (Exception ex)
@@ -194,11 +200,14 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
             var rows = excel.ReadSupplierPriceList(
                 file.OpenReadStream(), suppliers, parts, PersianDateService.Parse, out var errors);
 
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seen = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in rows)
             {
-                if (!seen.Add($"{item.SupplierId}:{item.PartId}:{item.ValidFrom:yyyyMMdd}:{item.ValidTo:yyyyMMdd}"))
-                    errors.Add($"سطر {item.RowNumber}: رکورد با همین تامین‌کننده، کالا و بازه زمانی در فایل تکراری است.");
+                var key = $"{item.SupplierId}:{item.PartId}:{item.ValidFrom:yyyyMMdd}:{item.ValidTo:yyyyMMdd}";
+                if (seen.TryGetValue(key, out var seenPrice) && seenPrice == item.PurchasePrice)
+                    errors.Add($"سطر {item.RowNumber}: رکورد کاملاً تکراری با همان قیمت در فایل وجود دارد.");
+                else
+                    seen[key] = item.PurchasePrice;
 
                 var mapping = await db.SupplierParts.AsNoTracking()
                     .SingleOrDefaultAsync(x => x.SupplierId == item.SupplierId && x.PartId == item.PartId && x.IsActive);
@@ -226,31 +235,40 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
                 if (!mappings.TryGetValue($"{item.SupplierId}:{item.PartId}", out var mappingId))
                     throw new InvalidOperationException($"ارتباط فعال تامین‌کننده و کالا برای سطر {item.RowNumber} پیدا نشد.");
 
-                var current = await db.SupplierPriceListItems.FirstOrDefaultAsync(x =>
+                var currentActive = await db.SupplierPriceListItems.FirstOrDefaultAsync(x =>
                     x.SupplierPartId == mappingId &&
                     x.ValidFrom == item.ValidFrom &&
-                    x.ValidTo == item.ValidTo);
+                    x.ValidTo == item.ValidTo &&
+                    x.IsActive);
 
-                if (current != null)
+                if (currentActive != null && currentActive.PurchasePrice == item.PurchasePrice)
                 {
-                    if (await IsUsedAsync(current.Id))
-                        throw new InvalidOperationException($"رکورد فهرست بها برای سطر {item.RowNumber} قبلاً در محاسبه استفاده شده است و قابل جایگزینی نیست.");
+                    currentActive.UpdatedAt = DateTime.UtcNow;
+                    continue;
+                }
 
-                    current.PurchasePrice = item.PurchasePrice;
-                    current.UpdatedAt = DateTime.UtcNow;
-                }
-                else
+                var conflicting = await db.SupplierPriceListItems
+                    .Where(x => x.SupplierPartId == mappingId &&
+                                x.ValidFrom == item.ValidFrom &&
+                                x.ValidTo == item.ValidTo &&
+                                x.IsActive)
+                    .ToListAsync();
+                foreach (var old in conflicting)
                 {
-                    db.SupplierPriceListItems.Add(new SupplierPriceListItem
-                    {
-                        SupplierPartId = mappingId,
-                        PurchasePrice = item.PurchasePrice,
-                        ValidFrom = item.ValidFrom,
-                        ValidTo = item.ValidTo,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    });
+                    old.IsActive = false;
+                    old.UpdatedAt = DateTime.UtcNow;
                 }
+
+                db.SupplierPriceListItems.Add(new SupplierPriceListItem
+                {
+                    SupplierPartId = mappingId,
+                    PurchasePrice = item.PurchasePrice,
+                    ValidFrom = item.ValidFrom,
+                    ValidTo = item.ValidTo,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
             }
 
 
@@ -291,6 +309,39 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
             Action = action, Entity = entity, EntityId = id, Details = details, UserId = UserId
         });
         await db.SaveChangesAsync();
+    }
+
+    static decimal ParsePurchasePrice(string raw)
+    {
+        var value = PersianDateService.ToLatinDigits(raw ?? "")
+            .Trim()
+            .Replace("٬", "")
+            .Replace(",", "")
+            .Replace(" ", "")
+            .Replace("٫", ".");
+        if (!decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var price))
+            throw new InvalidOperationException("قیمت خرید (فی) نامعتبر است.");
+        return price;
+    }
+
+    async Task DeactivateConflictingPricesAsync(int supplierPartId, DateTime from, DateTime to, decimal newPrice, long? exceptId)
+    {
+        var conflicts = await db.SupplierPriceListItems
+            .Where(x => x.SupplierPartId == supplierPartId &&
+                        x.ValidFrom == from &&
+                        x.ValidTo == to &&
+                        x.IsActive &&
+                        (!exceptId.HasValue || x.Id != exceptId.Value))
+            .ToListAsync();
+
+        foreach (var old in conflicts)
+        {
+            if (old.PurchasePrice == Math.Round(newPrice, 2))
+                throw new InvalidOperationException("رکوردی با همین کالا، تامین‌کننده، بازه زمانی و قیمت قبلاً فعال است.");
+
+            old.IsActive = false;
+            old.UpdatedAt = DateTime.UtcNow;
+        }
     }
 
     static void ValidatePrice(decimal price, DateTime from, DateTime to)
