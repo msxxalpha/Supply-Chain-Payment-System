@@ -1,0 +1,24 @@
+@model Indamin.Payment.Data.InputQuery
+@{ViewData["Title"]=Model.Id==0?"افزودن کوئری":"ویرایش کوئری";var isWarehouse=Model.Title=="اطلاعات رسیدهای خرید انبار";}
+<div class="page-header"><div><div class="eyebrow">اطلاعات پایه</div><h2>@ViewData["Title"]</h2><p class="text-muted">تنظیم اتصال SQL و متن یک کوئری خواندنی.</p></div><a class="btn btn-outline-secondary" href="/InputQueries">بازگشت</a></div>
+<form method="post" action="/InputQueries/Save" class="form-panel">@Html.AntiForgeryToken()<input type="hidden" name="Id" value="@Model.Id"/>
+<div class="row g-3">
+ <div class="col-lg-6"><label class="form-label">عنوان کوئری</label><input class="form-control" name="Title" value="@Model.Title" required><div class="form-hint">برای دریافت مستقیم رسید انبار، عنوان دقیقاً «اطلاعات رسیدهای خرید انبار» باشد.</div></div>
+ <div class="col-lg-6"><label class="form-label">سرور / Instance</label><input class="form-control" name="ServerInstance" value="@Model.ServerInstance" required></div>
+ <div class="col-lg-6"><label class="form-label">نام پایگاه داده</label><input class="form-control" name="DatabaseName" value="@Model.DatabaseName" required></div>
+ <div class="col-lg-3"><label class="form-label">نوع احراز هویت</label><select class="form-select" name="AuthenticationMode" id="authMode"><option value="sql" selected="@(Model.AuthenticationMode!="windows")">SQL Server</option><option value="windows" selected="@(Model.AuthenticationMode=="windows")">Windows</option></select></div>
+ <div class="col-lg-3"><label class="form-label">Timeout</label><div class="input-group"><input class="form-control" type="number" name="CommandTimeoutSeconds" min="5" max="300" value="@Model.CommandTimeoutSeconds"><span class="input-group-text">ثانیه</span></div></div>
+ <div class="col-lg-6" id="sqlUser"><label class="form-label">نام کاربری SQL</label><input class="form-control" name="Username" value="@Model.Username"></div>
+ <div class="col-lg-6" id="sqlPassword"><label class="form-label">کلمه عبور SQL</label><input class="form-control" type="password" name="password" autocomplete="new-password" placeholder="برای حفظ رمز فعلی خالی بگذارید"></div>
+ <div class="col-md-3"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="Encrypt" value="true" checked="@Model.Encrypt"> رمزنگاری اتصال</label></div>
+ <div class="col-md-4"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="TrustServerCertificate" value="true" checked="@Model.TrustServerCertificate"> اعتماد به گواهی سرور</label></div>
+ <div class="col-md-3"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="Enabled" value="true" checked="@Model.Enabled"> کوئری فعال</label></div>
+ <div class="col-12"><label class="form-label">متن SQL</label><textarea class="form-control" name="SqlText" rows="16" dir="ltr" style="font-family:Consolas,monospace" required>@Model.SqlText</textarea></div>
+ <div class="col-12"><div class="info-box"><b>قواعد ایمنی:</b> فقط یک دستور SELECT یا WITH خواندنی مجاز است؛ INSERT، UPDATE، DELETE، MERGE، DROP، ALTER، EXEC و چند دستور با ; پذیرفته نمی‌شود. برای کوئری رسید انبار از @FromDate و @ToDate استفاده کنید.</div></div>
+</div>
+@if(!ViewData.ModelState.IsValid){<div class="alert alert-danger mt-3">@foreach(var e in ViewData.ModelState.Values.SelectMany(v=>v.Errors)){<div>@e.ErrorMessage</div>}</div>}
+<div class="step-actions"><span class="subtle">رمز عبور به‌صورت رمزنگاری‌شده نگهداری می‌شود.</span><button class="btn btn-main btn-lg">ذخیره کوئری</button></div>
+</form>
+<script>
+(function(){function refresh(){const w=document.getElementById("authMode").value==="windows";document.getElementById("sqlUser").style.display=w?"none":"";document.getElementById("sqlPassword").style.display=w?"none":"";}document.getElementById("authMode").addEventListener("change",refresh);refresh();})();
+</script>
