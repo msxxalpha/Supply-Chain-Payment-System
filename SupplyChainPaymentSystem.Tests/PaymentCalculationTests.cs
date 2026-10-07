@@ -215,4 +215,44 @@ public class PaymentCalculationTests
         Assert.Equal(5_000_000,rows.Sum(x=>x.AllocatedAmount));
         Assert.True(rows.All(x=>x.AllocatedAmount%100_000==0));
     }
+
+    [Theory]
+    [InlineData("SELECT 1", true)]
+    [InlineData("WITH x AS (SELECT 1 AS A) SELECT A FROM x", true)]
+    [InlineData("UPDATE Parts SET Title='x'", false)]
+    [InlineData("SELECT 1; DELETE FROM Parts", false)]
+    public void InputQuery_AllowsOnlySingleReadOnlyStatement(string sql, bool expected)
+        => Assert.Equal(expected, InputQueryService.IsReadOnlyQuery(sql));
+
+    [Fact]
+    public void PaymentReceiptExcel_ParsesReceiptQuantity()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("رسیدها");
+        ws.Cell(1,1).Value="شماره رسید";
+        ws.Cell(1,2).Value="انبار";
+        ws.Cell(1,3).Value="نام کالا";
+        ws.Cell(1,4).Value="نام تامین کننده";
+        ws.Cell(1,5).Value="مقدار رسید";
+        ws.Cell(1,6).Value="مبلغ بدهی";
+        ws.Cell(1,7).Value="تاریخ رسید";
+        ws.Cell(2,1).Value="R-100";
+        ws.Cell(2,2).Value="انبار مرکزی";
+        ws.Cell(2,3).Value="کالا ۱";
+        ws.Cell(2,4).Value="تامین‌کننده ۱";
+        ws.Cell(2,5).Value=12.75m;
+        ws.Cell(2,6).Value=1000000m;
+        ws.Cell(2,7).Value="1405/01/15";
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position=0;
+
+        var rows = new ExcelService().ReadPaymentInvoices(ms, PersianDateService.Parse, out var errors);
+
+        Assert.Empty(errors);
+        var row = Assert.Single(rows);
+        Assert.Equal(12.75m, row.ReceiptQuantity);
+        Assert.Equal(1000000m, row.DebtAmount);
+    }
+
 }
