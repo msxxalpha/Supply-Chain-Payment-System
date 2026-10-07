@@ -1,0 +1,97 @@
+@model Indamin.Payment.Controllers.SupplierPriceListController.SupplierPriceListManageVm
+@{
+    ViewData["Title"] = "فهرست بها؛ " + Model.Supplier.Title;
+    var totalPages = Math.Max(1, (int)Math.Ceiling(Model.TotalCount / (double)Model.PageSize));
+}
+<div class="page-header">
+    <div><div class="eyebrow">مدیریت فهرست بها تامین‌کنندگان</div><h2>@Model.Supplier.Title</h2><p class="text-muted">کد تامین‌کننده: @Model.Supplier.Code — قیمت‌گذاری کالاهای مرتبط با امکان تعریف بازه‌های هم‌پوشان</p></div>
+    <a class="btn btn-outline-secondary" href="/SupplierPriceList">بازگشت به تامین‌کنندگان</a>
+</div>
+
+<div class="form-panel mb-3">
+    <div class="panel-title"><div><h4>تعریف قیمت جدید</h4><span>برای یک کالا می‌توانید چند بازه هم‌پوشان تعریف کنید.</span></div></div>
+    @if (Model.Mappings.Count == 0)
+    {
+        <div class="info-box">برای این تامین‌کننده هیچ ارتباط فعال کالا–تامین‌کننده‌ای تعریف نشده است.</div>
+    }
+    else
+    {
+        <form method="post" action="/SupplierPriceList/AddPrice" class="row g-3 align-items-end">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="supplierId" value="@Model.Supplier.Id">
+            <div class="col-lg-4"><label class="form-label">کالا</label><select class="form-select" name="supplierPartId" required>@foreach(var x in Model.Mappings){<option value="@x.Id">@x.Part!.Code - @x.Part.Title</option>}</select></div>
+            <div class="col-lg-3"><label class="form-label">قیمت خرید (فی)</label><input class="form-control" type="number" name="purchasePrice" min="0.01" step="0.01" required></div>
+            <div class="col-lg-2"><label class="form-label">تاریخ شروع</label><div class="jalali-input"><input class="form-control" data-jalali-date name="validFrom" autocomplete="off" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
+            <div class="col-lg-2"><label class="form-label">تاریخ پایان</label><div class="jalali-input"><input class="form-control" data-jalali-date name="validTo" autocomplete="off" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
+            <div class="col-lg-1"><button class="btn btn-main w-100">ثبت</button></div>
+        </form>
+    }
+</div>
+
+<div class="table-panel">
+    <div class="toolbar">
+        <form method="get" action="/SupplierPriceList/Manage" class="d-flex gap-2 w-100">
+            <input type="hidden" name="supplierId" value="@Model.Supplier.Id">
+            <input class="form-control" name="q" value="@Model.Search" placeholder="جست‌وجوی کد یا عنوان کالا...">
+            <select class="form-select page-size-select" name="pageSize" onchange="this.form.submit()">
+                <option value="25" selected="@(Model.PageSize==25)">25 ردیف</option>
+                <option value="50" selected="@(Model.PageSize==50)">50 ردیف</option>
+                <option value="75" selected="@(Model.PageSize==75)">75 ردیف</option>
+                <option value="100" selected="@(Model.PageSize==100)">100 ردیف</option>
+            </select>
+            <button class="btn btn-outline-primary" type="submit">جست‌وجو</button>
+        </form>
+    </div>
+    @await Html.PartialAsync("_TablePagination", (Model.Page, totalPages, Model.PageSize, Model.Search ?? "", $"/SupplierPriceList/Manage?supplierId={Model.Supplier.Id}"))
+    <div class="table-responsive">
+        <table class="table modern-table">
+            <thead><tr><th>کالا</th><th>قیمت خرید (فی)</th><th>تاریخ شروع</th><th>تاریخ پایان</th><th>وضعیت استفاده</th><th>عملیات</th></tr></thead>
+            <tbody>
+            @foreach(var x in Model.Rows)
+            {
+                var used = Model.UsedIds.Contains(x.Id);
+                <tr>
+                    <td class="fw-bold">@x.SupplierPart!.Part!.Code - @x.SupplierPart.Part.Title</td>
+                    <td class="amount-emphasis">@x.PurchasePrice.ToString("N2")</td>
+                    <td>@PersianDateService.ToJalali(x.ValidFrom)</td>
+                    <td>@PersianDateService.ToJalali(x.ValidTo)</td>
+                    <td>@(used ? "استفاده‌شده در محاسبه" : "قابل ویرایش")</td>
+                    <td class="text-nowrap">
+                        @if (used)
+                        {
+                            <span class="badge text-bg-light">قفل تاریخی</span>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-secondary" type="button" data-edit-toggle="price-@x.Id">ویرایش</button>
+                            <form method="post" action="/SupplierPriceList/DeletePrice" class="d-inline" data-confirm="رکورد قیمت حذف شود؟">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@x.Id"><button class="btn btn-sm btn-outline-danger">حذف</button></form>
+                        }
+                    </td>
+                </tr>
+                @if (!used)
+                {
+                    <tr class="edit-row" id="price-@x.Id">
+                        <td colspan="6">
+                            <form method="post" action="/SupplierPriceList/EditPrice" class="row g-2 align-items-end">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@x.Id">
+                                <div class="col-md-4"><label class="form-label">قیمت خرید (فی)</label><input class="form-control" type="number" name="purchasePrice" value="@x.PurchasePrice.ToString(System.Globalization.CultureInfo.InvariantCulture)" min="0.01" step="0.01" required></div>
+                                <div class="col-md-3"><label class="form-label">تاریخ شروع</label><div class="jalali-input"><input class="form-control" data-jalali-date name="validFrom" value="@PersianDateService.ToJalali(x.ValidFrom)" autocomplete="off" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
+                                <div class="col-md-3"><label class="form-label">تاریخ پایان</label><div class="jalali-input"><input class="form-control" data-jalali-date name="validTo" value="@PersianDateService.ToJalali(x.ValidTo)" autocomplete="off" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
+                                <div class="col-md-2"><button class="btn btn-main w-100">ذخیره ویرایش</button></div>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            }
+            @if (Model.Rows.Count == 0)
+            {
+                <tr><td colspan="6" class="text-center text-muted py-4">برای این تامین‌کننده رکورد فهرست بها پیدا نشد.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    @await Html.PartialAsync("_TablePagination", (Model.Page, totalPages, Model.PageSize, Model.Search ?? "", $"/SupplierPriceList/Manage?supplierId={Model.Supplier.Id}"))
+</div>
+
+<div class="info-box mt-3"><b>نکته:</b> حذف یا ویرایش قیمت‌هایی که در هر محاسبه‌ای استفاده شده‌اند، حتی اگر آن محاسبه بعداً حذف منطقی شده باشد، مجاز نیست؛ این محدودیت برای حفظ سابقه نرخ استفاده‌شده است.</div>
