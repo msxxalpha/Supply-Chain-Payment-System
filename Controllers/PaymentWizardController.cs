@@ -642,7 +642,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
     public async Task<IActionResult> History()
     {
         var rows = await db.PaymentRuns.Where(x => !x.IsDeleted && (x.Status == PaymentRunStatus.Approved || x.Status == PaymentRunStatus.PaymentOrdered))
-            .Include(x => x.Invoices).Include(x => x.SupplierSummaries).OrderByDescending(x => x.Id).ToListAsync();
+            .Include(x => x.Invoices).Include(x => x.SupplierSummaries).Include(x => x.SystemParameterSnapshots).OrderByDescending(x => x.Id).ToListAsync();
         return View(rows);
     }
 
