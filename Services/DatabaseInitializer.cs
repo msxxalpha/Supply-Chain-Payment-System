@@ -89,7 +89,99 @@ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_PaymentRunInvoices_Price
  CREATE INDEX IX_PaymentRunInvoices_PriceListItemId ON dbo.PaymentRunInvoices(PriceListItemId);
 """);
  }
- public static async Task SeedSecurityAsync(AppDbContext db){foreach(var d in SecurityPermissions.Definitions){if(!await db.Permissions.AnyAsync(x=>x.Code==d.Code))db.Permissions.Add(new AppPermission{Code=d.Code,Title=d.Title,GroupTitle=d.GroupTitle,SortOrder=d.SortOrder});}await db.SaveChangesAsync();foreach(var def in SecurityPermissions.DefaultRolePermissions){var role=await db.Roles.SingleOrDefaultAsync(x=>x.Code==def.Key);if(role==null){role=new AppRole{Code=def.Key,Title=def.Key=="SYS_ADMIN"?"مدیر سامانه":def.Key=="FINANCE_OPERATOR"?"کارشناس مالی":def.Key=="FINANCE_VIEWER"?"ناظر مالی":"مدیر اطلاعات پایه",IsSystem=def.Key=="SYS_ADMIN",IsActive=true};db.Roles.Add(role);await db.SaveChangesAsync();}var permissionIds=await db.Permissions.Where(x=>def.Value.Contains(x.Code)).Select(x=>x.Id).ToListAsync();var existing=await db.RolePermissions.Where(x=>x.RoleId==role.Id).Select(x=>x.PermissionId).ToListAsync();var missing=permissionIds.Where(x=>!existing.Contains(x)).Select(x=>new AppRolePermission{RoleId=role.Id,PermissionId=x}).ToList();if(missing.Count>0){db.RolePermissions.AddRange(missing);await db.SaveChangesAsync();}}}
+ public static async Task EnsureSupplierPartAssessmentSchemaAsync(AppDbContext db){
+  await db.Database.ExecuteSqlRawAsync("""
+IF OBJECT_ID(N'dbo.SupplierPartAssessorEvaluations',N'U') IS NULL
+BEGIN
+ CREATE TABLE dbo.SupplierPartAssessorEvaluations(
+  Id bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_SupplierPartAssessorEvaluations PRIMARY KEY,
+  SupplierPartId int NOT NULL,
+  PaymentParameterId int NOT NULL,
+  AssessorUserId int NOT NULL,
+  Score decimal(8,2) NOT NULL,
+  CreatedAt datetime2 NOT NULL DEFAULT(sysutcdatetime()),
+  UpdatedAt datetime2 NOT NULL DEFAULT(sysutcdatetime()),
+  CONSTRAINT FK_SupplierPartAssessorEvaluations_SupplierPart FOREIGN KEY(SupplierPartId) REFERENCES dbo.SupplierParts(Id) ON DELETE CASCADE,
+  CONSTRAINT FK_SupplierPartAssessorEvaluations_Parameter FOREIGN KEY(PaymentParameterId) REFERENCES dbo.PaymentParameters(Id) ON DELETE NO ACTION,
+  CONSTRAINT FK_SupplierPartAssessorEvaluations_User FOREIGN KEY(AssessorUserId) REFERENCES dbo.AppUsers(Id) ON DELETE NO ACTION
+ );
+END
+IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'UX_SupplierPartAssessorEvaluations_Key' AND object_id=OBJECT_ID(N'dbo.SupplierPartAssessorEvaluations'))
+ CREATE UNIQUE INDEX UX_SupplierPartAssessorEvaluations_Key ON dbo.SupplierPartAssessorEvaluations(SupplierPartId,PaymentParameterId,AssessorUserId);
+IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_SupplierPartAssessorEvaluations_User' AND object_id=OBJECT_ID(N'dbo.SupplierPartAssessorEvaluations'))
+ CREATE INDEX IX_SupplierPartAssessorEvaluations_User ON dbo.SupplierPartAssessorEvaluations(AssessorUserId,UpdatedAt);
+
+IF OBJECT_ID(N'dbo.UserActivitySessions',N'U') IS NULL
+BEGIN
+ CREATE TABLE dbo.UserActivitySessions(
+  Id bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_UserActivitySessions PRIMARY KEY,
+  UserId int NOT NULL,
+  RoleCode nvarchar(100) NOT NULL,
+  LoginAtUtc datetime2 NOT NULL,
+  LastSeenAtUtc datetime2 NOT NULL,
+  LogoutAtUtc datetime2 NULL,
+  DurationSeconds int NOT NULL DEFAULT(0),
+  CONSTRAINT FK_UserActivitySessions_User FOREIGN KEY(UserId) REFERENCES dbo.AppUsers(Id) ON DELETE CASCADE
+ );
+END
+IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_UserActivitySessions_UserLogin' AND object_id=OBJECT_ID(N'dbo.UserActivitySessions'))
+ CREATE INDEX IX_UserActivitySessions_UserLogin ON dbo.UserActivitySessions(UserId,LoginAtUtc DESC);
+""");
+ }
+ public static async Task SeedSecurityAsync(AppDbContext db){
+  foreach(var d in SecurityPermissions.Definitions)
+  {
+   if(!await db.Permissions.AnyAsync(x=>x.Code==d.Code))
+    db.Permissions.Add(new AppPermission{Code=d.Code,Title=d.Title,GroupTitle=d.GroupTitle,SortOrder=d.SortOrder});
+  }
+  await db.SaveChangesAsync();
+
+  var manualParameters=await db.PaymentParameters
+      .Where(x=>x.ScoringMethod==ParameterScoringMethod.Manual)
+      .OrderBy(x=>x.SortOrder).ThenBy(x=>x.Title)
+      .ToListAsync();
+
+  foreach(var p in manualParameters)
+  {
+   var code=$"SupplierPartEvaluation.Parameter.{p.Id}";
+   if(!await db.Permissions.AnyAsync(x=>x.Code==code))
+    db.Permissions.Add(new AppPermission{Code=code,Title=p.Title,GroupTitle="ارزیابی قطعه–تامین‌کننده",SortOrder=60+p.SortOrder});
+  }
+  await db.SaveChangesAsync();
+
+  foreach(var def in SecurityPermissions.DefaultRolePermissions)
+  {
+   var role=await db.Roles.SingleOrDefaultAsync(x=>x.Code==def.Key);
+   if(role==null)
+   {
+    role=new AppRole{
+      Code=def.Key,
+      Title=def.Key=="SYS_ADMIN"?"مدیر سامانه":
+            def.Key=="FINANCE_OPERATOR"?"کارشناس مالی":
+            def.Key=="FINANCE_VIEWER"?"ناظر مالی":
+            def.Key=="MASTER_DATA"?"مدیر اطلاعات پایه":
+            def.Key=="SUPPLIER_PART_ASSESSOR"?"ارزیاب قطعه–تامین‌کننده":def.Key,
+      IsSystem=def.Key=="SYS_ADMIN",
+      IsActive=true
+    };
+    db.Roles.Add(role);
+    await db.SaveChangesAsync();
+   }
+
+   var wantedCodes=def.Value.ToList();
+   if(def.Key=="SUPPLIER_PART_ASSESSOR")
+     wantedCodes.AddRange(manualParameters.Select(p=>$"SupplierPartEvaluation.Parameter.{p.Id}"));
+
+   var permissionIds=await db.Permissions.Where(x=>wantedCodes.Contains(x.Code)).Select(x=>x.Id).ToListAsync();
+   var existing=await db.RolePermissions.Where(x=>x.RoleId==role.Id).Select(x=>x.PermissionId).ToListAsync();
+   var missing=permissionIds.Where(x=>!existing.Contains(x)).Select(permissionId=>new AppRolePermission{RoleId=role.Id,PermissionId=permissionId}).ToList();
+   if(missing.Count>0)
+   {
+    db.RolePermissions.AddRange(missing);
+    await db.SaveChangesAsync();
+   }
+  }
+ }
  public static async Task SeedAsync(AppDbContext db){
   if(!await db.LookupValues.AnyAsync()){db.LookupValues.AddRange(
   new LookupValue{GroupCode="PART_TYPE",Code="RAW",Title="مواد اولیه",SortOrder=1},new LookupValue{GroupCode="PART_TYPE",Code="SEMIFINISHED",Title="نیمه‌ساخته",SortOrder=2},new LookupValue{GroupCode="PART_TYPE",Code="FINISHED",Title="کالای نهایی",SortOrder=3},new LookupValue{GroupCode="PART_TYPE",Code="PACKAGING",Title="بسته‌بندی",SortOrder=4},
