@@ -19,7 +19,7 @@ public static class SecurityPermissions{
  public const string SetupEvaluations="Permission:Setup.Evaluations";
  public const string SetupLookups="Permission:Setup.Lookups"; public const string SetupQueries="Permission:Setup.Queries"; public const string SetupSupplierPriceList="Permission:Setup.SupplierPriceList"; public const string SupplierPartEvaluationView="Permission:SupplierPartEvaluation.View";
  public const string UsersManage="Permission:Users.Manage";
- public static readonly string[] AllCodes=[DashboardView[11..],PaymentCalculate[11..],PaymentHistory[11..],PaymentApprove[11..],PaymentOrderCreate[11..],PaymentOrderDownload[11..],PaymentDelete[11..],PaymentNonCalculated[11..],ReportsView[11..],SupplierOverview[11..],SetupParameters[11..],SetupSystemParameters[11..],SetupParts[11..],SetupSuppliers[11..],SetupMappings[11..],SetupEvaluations[11..],SetupLookups[11..],SetupQueries[11..],SetupSupplierPriceList[11..],UsersManage[11..]];
+ public static readonly string[] AllCodes=[DashboardView[11..],PaymentCalculate[11..],PaymentHistory[11..],PaymentApprove[11..],PaymentOrderCreate[11..],PaymentOrderDownload[11..],PaymentDelete[11..],PaymentNonCalculated[11..],ReportsView[11..],SupplierOverview[11..],SetupParameters[11..],SetupSystemParameters[11..],SetupParts[11..],SetupSuppliers[11..],SetupMappings[11..],SetupEvaluations[11..],SetupLookups[11..],SetupQueries[11..],SetupSupplierPriceList[11..],SupplierPartEvaluationView[11..],UsersManage[11..]];
  public static string SupplierPartParameterPermission(int parameterId)=>$"Permission:SupplierPartEvaluation.Parameter.{parameterId}";
  public record Definition(string Code,string Title,string GroupTitle,int SortOrder);
  public static readonly IReadOnlyList<Definition> Definitions=[
