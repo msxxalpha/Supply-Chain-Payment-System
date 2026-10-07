@@ -97,3 +97,17 @@ else
         @await Html.PartialAsync("_TablePagination", (Model.Page, totalPages, Model.PageSize, Model.Search ?? "", "/SupplierPartEvaluation"))
     </div>
 }
+<script>
+document.addEventListener("DOMContentLoaded",function(){
+    const token=document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+    if(!token) return;
+    const ping=function(){
+        fetch("/Account/PingEvaluatorActivity",{
+            method:"POST",
+            headers:{"RequestVerificationToken":token}
+        }).catch(()=>{});
+    };
+    ping();
+    window.setInterval(ping,60000);
+});
+</script>
