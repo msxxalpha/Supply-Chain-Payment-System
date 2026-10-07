@@ -111,3 +111,6 @@ h1,h2,h3,h4,h5,h6{color:var(--navy);font-weight:900}h1{font-size:30px}h2{font-si
 .table-pagination-select{width:58px;height:36px;padding:0 7px;border:1px solid #d8e0e6;border-radius:8px;background:#fff;color:#526b7c;text-align:center;font-size:11px;cursor:pointer}
 .table-pagination-select:focus{outline:none;border-color:#8eb2c7;box-shadow:0 0 0 3px rgba(45,127,179,.10)}
 @media(max-width:700px){.table-pagination{gap:10px;overflow-x:auto}.table-pagination-jump{margin-left:auto}.table-pagination-nav,.table-pagination-jump{flex:0 0 auto}}
+
+/* Supplier price list money fields */
+.money-field{position:relative}.money-input{text-align:left;direction:ltr;font-variant-numeric:tabular-nums}.money-in-words{min-height:18px;margin-top:4px;color:#7f92a0;font-size:9px;line-height:1.8;text-align:right;direction:rtl}.money-in-words::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--blue);margin-left:5px;vertical-align:middle;opacity:.65}
