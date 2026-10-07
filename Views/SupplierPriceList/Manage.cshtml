@@ -21,7 +21,7 @@
             @Html.AntiForgeryToken()
             <input type="hidden" name="supplierId" value="@Model.Supplier.Id">
             <div class="col-lg-4"><label class="form-label">کالا</label><select class="form-select" name="supplierPartId" required>@foreach(var x in Model.Mappings){<option value="@x.Id">@x.Part!.Code - @x.Part.Title</option>}</select></div>
-            <div class="col-lg-3"><label class="form-label">قیمت خرید (فی)</label><input class="form-control" type="number" name="purchasePrice" min="0.01" step="0.01" required></div>
+            <div class="col-lg-3"><label class="form-label">قیمت خرید (فی) (ریال)</label><div class="money-field"><input class="form-control money-input" type="text" name="purchasePrice" inputmode="decimal" autocomplete="off" data-money-input required><div class="money-in-words" data-money-words>مبلغ به حروف پس از ورود نمایش داده می‌شود.</div></div></div>
             <div class="col-lg-2"><label class="form-label">تاریخ شروع</label><div class="jalali-input"><input class="form-control" data-jalali-date name="validFrom" autocomplete="off" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
             <div class="col-lg-2"><label class="form-label">تاریخ پایان</label><div class="jalali-input"><input class="form-control" data-jalali-date name="validTo" autocomplete="off" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
             <div class="col-lg-1"><button class="btn btn-main w-100">ثبت</button></div>
@@ -53,12 +53,29 @@
                 var used = Model.UsedIds.Contains(x.Id);
                 <tr>
                     <td class="fw-bold">@x.SupplierPart!.Part!.Code - @x.SupplierPart.Part.Title</td>
-                    <td class="amount-emphasis">@x.PurchasePrice.ToString("N2")</td>
+                    <td class="amount-emphasis">@x.PurchasePrice.ToString("N2") ریال</td>
                     <td>@PersianDateService.ToJalali(x.ValidFrom)</td>
                     <td>@PersianDateService.ToJalali(x.ValidTo)</td>
-                    <td>@(used ? "استفاده‌شده در محاسبه" : "قابل ویرایش")</td>
+                    <td>
+    @if (!x.IsActive)
+    {
+        <span class="badge text-bg-light">غیرفعال؛ نرخ جایگزین شده</span>
+    }
+    else if (used)
+    {
+        <span class="badge text-bg-light">استفاده‌شده در محاسبه</span>
+    }
+    else
+    {
+        <span>قابل ویرایش</span>
+    }
+</td>
                     <td class="text-nowrap">
-                        @if (used)
+                        @if (!x.IsActive)
+                        {
+                            <span class="badge text-bg-light">غیرفعال</span>
+                        }
+                        else if (used)
                         {
                             <span class="badge text-bg-light">قفل تاریخی</span>
                         }
@@ -76,7 +93,7 @@
                             <form method="post" action="/SupplierPriceList/EditPrice" class="row g-2 align-items-end">
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="id" value="@x.Id">
-                                <div class="col-md-4"><label class="form-label">قیمت خرید (فی)</label><input class="form-control" type="number" name="purchasePrice" value="@x.PurchasePrice.ToString(System.Globalization.CultureInfo.InvariantCulture)" min="0.01" step="0.01" required></div>
+                                <div class="col-md-4"><label class="form-label">قیمت خرید (فی) (ریال)</label><div class="money-field"><input class="form-control money-input" type="text" name="purchasePrice" value='@x.PurchasePrice.ToString("N2")' inputmode="decimal" autocomplete="off" data-money-input required><div class="money-in-words" data-money-words>مبلغ به حروف</div></div></div>
                                 <div class="col-md-3"><label class="form-label">تاریخ شروع</label><div class="jalali-input"><input class="form-control" data-jalali-date name="validFrom" value="@PersianDateService.ToJalali(x.ValidFrom)" autocomplete="off" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
                                 <div class="col-md-3"><label class="form-label">تاریخ پایان</label><div class="jalali-input"><input class="form-control" data-jalali-date name="validTo" value="@PersianDateService.ToJalali(x.ValidTo)" autocomplete="off" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
                                 <div class="col-md-2"><button class="btn btn-main w-100">ذخیره ویرایش</button></div>
