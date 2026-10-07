@@ -270,7 +270,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
         var mappingIds = mappedRows.Select(x => x.MappingId).Distinct().ToList();
         var activePrices = await db.SupplierPriceListItems.AsNoTracking()
-            .Where(x => x.IsActive && mappingIds.Contains(x.SupplierPartId))
+            .Where(x => x.IsActive && x.PurchasePrice > 0 && mappingIds.Contains(x.SupplierPartId))
             .Select(x => new { x.SupplierPartId, x.ValidFrom, x.ValidTo })
             .ToListAsync();
 
