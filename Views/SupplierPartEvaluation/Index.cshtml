@@ -72,6 +72,7 @@ else
                                 <input form="@formId" type="hidden" name="items[@parameterIndex].ParameterId" value="@p.Id">
                                 <small class="subtle d-block mt-1">میانگین: @average.ToString("0.##")</small>
                             </td>
+                            parameterIndex++;
                         }
                         <td class="text-nowrap">
                             <form id="@formId" method="post" action="/SupplierPartEvaluation/Save">
