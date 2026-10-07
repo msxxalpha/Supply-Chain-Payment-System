@@ -201,7 +201,7 @@ namespace Indamin.Payment.Controllers;
     db.SupplierPartEvaluations.Add(new SupplierPartEvaluation
     {
      SupplierPartId=mapId,PaymentParameterId=parameter.Id,Score=average,IsActive=true,
-     CreatedAt=DateTime.UtcNow,UpdatedAt=DateTime.UtcNow
+     UpdatedAt=DateTime.UtcNow
     });
    }
   }
