@@ -130,6 +130,8 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
         var supplierId = row.SupplierPart!.SupplierId;
         try
         {
+            if (!row.IsActive)
+                throw new InvalidOperationException("این رکورد فهرست بها غیرفعال شده و قابل ویرایش نیست.");
             if (await IsUsedAsync(id))
                 throw new InvalidOperationException("این نرخ قبلاً در محاسبه پرداخت استفاده شده است و قابل ویرایش نیست.");
 
@@ -165,6 +167,8 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
 
         try
         {
+            if (!row.IsActive)
+                throw new InvalidOperationException("این رکورد فهرست بها قبلاً غیرفعال شده و قابل حذف نیست.");
             if (await IsUsedAsync(id))
                 throw new InvalidOperationException("این نرخ قبلاً در محاسبه پرداخت استفاده شده است و قابل حذف نیست.");
 
