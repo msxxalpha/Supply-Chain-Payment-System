@@ -295,7 +295,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
         try
         {
-            await calc.RecalculateAllocationAsync(s);
+            await calc.RecalculateCurrentDebtsAsync(s);
             Save(s);
             TempData["Result"] = "امتیازهای دستی و مبلغ تخصیص‌یافته با قواعد جدید مجدداً محاسبه شد.";
         }
@@ -377,9 +377,22 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             TempData["Error"] = "تمام پارامترهای دستی باید امتیاز معتبر داشته باشند.";
             return RedirectToAction(nameof(Step2));
         }
-        s.Step = 3;
-        Save(s);
-        return RedirectToAction(nameof(Step3));
+        try
+        {
+            // قیمت معتبر باید درست پیش از ورود به مرحله تخصیص نهایی دوباره تعیین شود.
+            // بنابراین اگر فهرست بها بین جذب اطلاعات و مرحله سوم تغییر کرده باشد،
+            // محاسبه بر مبنای آخرین نرخ معتبر انجام می‌شود.
+            await calc.RecalculateCurrentDebtsAsync(s);
+            s.Step = 3;
+            Save(s);
+            return RedirectToAction(nameof(Step3));
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = ex.Message;
+            Save(s);
+            return RedirectToAction(nameof(Step2));
+        }
     }
 
     [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
@@ -436,6 +449,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             var run = new PaymentRun
             {
                 RunType = PaymentRunType.Calculated,
+                ReceiptSource = s.ReceiptSource,
                 Title = s.Title,
                 CalculationDateJalali = s.CalculationDateJalali,
                 CalculationDate = s.CalcDate(),
@@ -459,6 +473,21 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             };
             db.PaymentRuns.Add(run);
             await db.SaveChangesAsync();
+
+            if (s.CurrentClaimCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList)
+            {
+                var priceIds = s.Rows.Where(x => x.PriceListItemId.HasValue).Select(x => x.PriceListItemId!.Value).Distinct().ToList();
+                var currentPrices = await db.SupplierPriceListItems.Where(x => priceIds.Contains(x.Id)).AsNoTracking().ToDictionaryAsync(x => x.Id);
+                foreach (var row in s.Rows)
+                {
+                    if (!row.PriceListItemId.HasValue || !currentPrices.TryGetValue(row.PriceListItemId.Value, out var livePrice))
+                        throw new InvalidOperationException($"فهرست بهای استفاده‌شده برای رسید «{row.ReceiptNo}» دیگر در سیستم موجود نیست؛ محاسبه را مجدداً انجام دهید.");
+                    if (Math.Abs(livePrice.PurchasePrice - row.AppliedUnitPrice) > .005m ||
+                        livePrice.ValidFrom.Date != row.AppliedPriceValidFrom?.Date ||
+                        livePrice.ValidTo.Date != row.AppliedPriceValidTo?.Date)
+                        throw new InvalidOperationException($"فهرست بهای استفاده‌شده برای رسید «{row.ReceiptNo}» پس از محاسبه تغییر کرده است؛ محاسبه را مجدداً انجام دهید.");
+                }
+            }
 
             await SaveSystemParameterSnapshotsAsync(run.Id, s);
             foreach (var p in s.Parameters)
@@ -508,6 +537,12 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
                     SupplierTitle = row.SupplierTitle,
                     PartId = row.PartId,
                     SupplierId = row.SupplierId,
+                    ReceiptQuantity = row.ReceiptQuantity,
+                    DebtCalculationMethod = row.DebtCalculationMethod,
+                    AppliedUnitPrice = row.AppliedUnitPrice,
+                    PriceListItemId = row.PriceListItemId,
+                    AppliedPriceValidFrom = row.AppliedPriceValidFrom,
+                    AppliedPriceValidTo = row.AppliedPriceValidTo,
                     OriginalDebt = row.OriginalDebt,
                     ReceiptDate = row.ReceiptDate,
                     ReceiptDateJalali = row.ReceiptDateJalali,
@@ -649,6 +684,8 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         var rows = run.Invoices.Select(x => new PaymentCalculationRow
         {
             ReceiptNo = x.ReceiptNo, Warehouse = x.Warehouse, PartTitle = x.PartTitle, SupplierTitle = x.SupplierTitle,
+            ReceiptQuantity = x.ReceiptQuantity, DebtCalculationMethod = x.DebtCalculationMethod, AppliedUnitPrice = x.AppliedUnitPrice,
+            PriceListItemId = x.PriceListItemId, AppliedPriceValidFrom = x.AppliedPriceValidFrom, AppliedPriceValidTo = x.AppliedPriceValidTo,
             OriginalDebt = x.OriginalDebt, PreviousAllocated = x.PreviousAllocated, RemainingDebt = x.RemainingDebt,
             SupplierOutstandingDebt = x.SupplierOutstandingDebt, ContractSettlementDays = x.ContractSettlementDays, DebtAgeDays = x.DebtAgeDays,
             WeightedScore = x.WeightedScore, AllocationRatio = x.AllocationRatio,
