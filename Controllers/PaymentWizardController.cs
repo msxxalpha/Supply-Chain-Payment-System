@@ -202,8 +202,10 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
         if (s.CurrentClaimCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList)
         {
+            var partRefs = partByName.ToDictionary(x => x.Key, x => (Id: x.Value.Id, Title: x.Value.Title));
+            var supplierRefs = supplierByName.ToDictionary(x => x.Key, x => (Id: x.Value.Id, Title: x.Value.Title));
             var priceListErrors = await FindMissingPriceListErrorsAsync(
-                imported, partByName, supplierByName, mappingByPair, source == PaymentReceiptSource.Excel);
+                imported, partRefs, supplierRefs, mappingByPair, source == PaymentReceiptSource.Excel);
             errors.AddRange(priceListErrors);
         }
 
@@ -237,8 +239,8 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
     async Task<List<string>> FindMissingPriceListErrorsAsync(
         IReadOnlyList<ImportedPaymentInvoice> imported,
-        IReadOnlyDictionary<string, dynamic> partByName,
-        IReadOnlyDictionary<string, dynamic> supplierByName,
+        IReadOnlyDictionary<string, (int Id, string Title)> partByName,
+        IReadOnlyDictionary<string, (int Id, string Title)> supplierByName,
         IReadOnlyDictionary<(int PartId, int SupplierId), int> mappingByPair,
         bool isExcel)
     {
