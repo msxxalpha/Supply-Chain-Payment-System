@@ -1,4 +1,5 @@
 @model Indamin.Payment.Data.PaymentWizardState
+@using Indamin.Payment.Services
 @{
  ViewData["Title"]="گام سوم؛ تجمیع و تایید تخصیص";
  var groups=Model.Rows.Where(x=>x.SupplierId.HasValue).GroupBy(x=>new{x.SupplierId,x.SupplierTitle}).Select(g=>new{
