@@ -363,7 +363,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
     [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult GoStep3()
+    public async Task<IActionResult> GoStep3()
     {
         var s = Load();
         if (s == null) return RedirectToAction(nameof(Step1));
