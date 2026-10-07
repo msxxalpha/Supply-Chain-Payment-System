@@ -3,8 +3,46 @@ using System.Security.Claims;using Indamin.Payment.Data;using Microsoft.AspNetCo
 namespace Indamin.Payment.Controllers;
 public class AccountController(AppDbContext db,CompanySettingsService companySettings):Controller{
  [AllowAnonymous][HttpGet] public async Task<IActionResult> Login(string? returnUrl=null)=>User.Identity?.IsAuthenticated==true?Redirect(!string.IsNullOrWhiteSpace(returnUrl)&&Url.IsLocalUrl(returnUrl)?returnUrl:"/"):(IActionResult)View(new LoginVm{returnUrl=returnUrl,Company=await companySettings.GetAsync()});
- [AllowAnonymous][HttpPost][ValidateAntiForgeryToken] public async Task<IActionResult> Login(LoginVm m){if(string.IsNullOrWhiteSpace(m.UserName)||string.IsNullOrWhiteSpace(m.Password)){ModelState.AddModelError("","نام کاربری و رمز عبور الزامی است.");m.Company=await companySettings.GetAsync();return View(m);}var u=await db.Users.SingleOrDefaultAsync(x=>x.UserName==m.UserName.Trim()&&x.IsActive);if(u==null||!PasswordHasher.Verify(m.Password,u.PasswordHash)){ModelState.AddModelError("","نام کاربری یا رمز عبور نادرست است.");m.Company=await companySettings.GetAsync();return View(m);}var roleCodes=await db.UserRoles.Where(x=>x.UserId==u.Id&&x.Role!.IsActive).Select(x=>x.Role!.Code).Distinct().ToListAsync();var permissionCodes=await db.UserRoles.Where(x=>x.UserId==u.Id&&x.Role!.IsActive).Join(db.RolePermissions,ur=>ur.RoleId,rp=>rp.RoleId,(ur,rp)=>rp).Where(x=>x.Permission!.Code!="").Select(x=>x.Permission!.Code).Distinct().ToListAsync();if(u.IsAdmin)permissionCodes=SecurityPermissions.AllCodes.ToList();var claimList=new List<Claim>{new(ClaimTypes.Name,u.DisplayName),new("UserId",u.Id.ToString()),new("IsAdmin",u.IsAdmin?"1":"0")};claimList.AddRange(roleCodes.Select(x=>new Claim(ClaimTypes.Role,x)));claimList.AddRange(permissionCodes.Select(x=>new Claim(SecurityPermissions.Claim,x)));var claims=claimList.ToArray();await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,new ClaimsPrincipal(new ClaimsIdentity(claims,CookieAuthenticationDefaults.AuthenticationScheme)));return Redirect(!string.IsNullOrWhiteSpace(m.returnUrl)&&Url.IsLocalUrl(m.returnUrl)?m.returnUrl:"/");}
- [Authorize][HttpPost][ValidateAntiForgeryToken] public async Task<IActionResult> Logout(){await HttpContext.SignOutAsync();return RedirectToAction(nameof(Login));}
+ [AllowAnonymous][HttpPost][ValidateAntiForgeryToken] public async Task<IActionResult> Login(LoginVm m){if(string.IsNullOrWhiteSpace(m.UserName)||string.IsNullOrWhiteSpace(m.Password)){ModelState.AddModelError("","نام کاربری و رمز عبور الزامی است.");m.Company=await companySettings.GetAsync();return View(m);}var u=await db.Users.SingleOrDefaultAsync(x=>x.UserName==m.UserName.Trim()&&x.IsActive);if(u==null||!PasswordHasher.Verify(m.Password,u.PasswordHash)){ModelState.AddModelError("","نام کاربری یا رمز عبور نادرست است.");m.Company=await companySettings.GetAsync();return View(m);}var roleCodes=await db.UserRoles.Where(x=>x.UserId==u.Id&&x.Role!.IsActive).Select(x=>x.Role!.Code).Distinct().ToListAsync();var permissionCodes=await db.UserRoles.Where(x=>x.UserId==u.Id&&x.Role!.IsActive).Join(db.RolePermissions,ur=>ur.RoleId,rp=>rp.RoleId,(ur,rp)=>rp).Where(x=>x.Permission!.Code!="").Select(x=>x.Permission!.Code).Distinct().ToListAsync();if(u.IsAdmin)permissionCodes=SecurityPermissions.AllCodes.ToList();var claimList=new List<Claim>{new(ClaimTypes.Name,u.DisplayName),new("UserId",u.Id.ToString()),new("IsAdmin",u.IsAdmin?"1":"0")};claimList.AddRange(roleCodes.Select(x=>new Claim(ClaimTypes.Role,x)));claimList.AddRange(permissionCodes.Select(x=>new Claim(SecurityPermissions.Claim,x)));var claims=claimList.ToArray();
+  await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,new ClaimsPrincipal(new ClaimsIdentity(claims,CookieAuthenticationDefaults.AuthenticationScheme)));
+  if(roleCodes.Contains("SUPPLIER_PART_ASSESSOR",StringComparer.OrdinalIgnoreCase))
+  {
+      var now=DateTime.UtcNow;
+      var previous=await db.UserActivitySessions.Where(x=>x.UserId==u.Id&&x.LogoutAtUtc==null).ToListAsync();
+      foreach(var session in previous)
+      {
+          session.LastSeenAtUtc=now;
+          session.LogoutAtUtc=now;
+          session.DurationSeconds=Math.Max(0,(int)Math.Min(int.MaxValue,(now-session.LoginAtUtc).TotalSeconds));
+      }
+      db.UserActivitySessions.Add(new UserActivitySession
+      {
+          UserId=u.Id,
+          RoleCode="SUPPLIER_PART_ASSESSOR",
+          LoginAtUtc=now,
+          LastSeenAtUtc=now,
+          DurationSeconds=0
+      });
+      await db.SaveChangesAsync();
+  }
+  return Redirect(!string.IsNullOrWhiteSpace(m.returnUrl)&&Url.IsLocalUrl(m.returnUrl)?m.returnUrl:"/");}
+ [Authorize][HttpPost][ValidateAntiForgeryToken] public async Task<IActionResult> Logout(){
+  var userIdValue=User.FindFirst("UserId")?.Value;
+  if(int.TryParse(userIdValue,out var userId) && User.IsInRole("SUPPLIER_PART_ASSESSOR"))
+  {
+      var now=DateTime.UtcNow;
+      var active=await db.UserActivitySessions.Where(x=>x.UserId==userId&&x.LogoutAtUtc==null).ToListAsync();
+      foreach(var session in active)
+      {
+          session.LastSeenAtUtc=now;
+          session.LogoutAtUtc=now;
+          session.DurationSeconds=Math.Max(0,(int)Math.Min(int.MaxValue,(now-session.LoginAtUtc).TotalSeconds));
+      }
+      await db.SaveChangesAsync();
+  }
+  await HttpContext.SignOutAsync();
+  return RedirectToAction(nameof(Login));
+}
  [AllowAnonymous]public IActionResult Denied()=>Content("دسترسی به این بخش برای کاربر شما مجاز نیست.");
  public class LoginVm{public string? UserName{get;set;}public string? Password{get;set;}public string? returnUrl{get;set;}public CompanySettings Company{get;set;}=new();}
 }
