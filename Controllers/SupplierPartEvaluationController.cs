@@ -180,7 +180,6 @@ public class SupplierPartEvaluationController(AppDbContext db) : Controller
                 PaymentParameterId = parameterId,
                 Score = average,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             });
         }
