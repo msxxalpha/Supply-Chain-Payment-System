@@ -474,8 +474,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         // به‌اشتباه در گروه فرمت یا خطاهای عمومی قرار نگیرند.
         if (error.Contains("ستون", StringComparison.OrdinalIgnoreCase)
             || error.Contains("فایل Excel", StringComparison.OrdinalIgnoreCase)
-            || error.Contains("فرمت", StringComparison.OrdinalIgnoreCase)
-            || error.Contains("Excel", StringComparison.OrdinalIgnoreCase))
+            || error.Contains("فرمت", StringComparison.OrdinalIgnoreCase))
             return groups.First(x => x.Key == "format");
 
         if (error.Contains("فهرست بها", StringComparison.OrdinalIgnoreCase)
