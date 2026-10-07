@@ -33,9 +33,12 @@ BEGIN
   ValidTo date NOT NULL,
   CreatedAt datetime2 NOT NULL DEFAULT(sysutcdatetime()),
   UpdatedAt datetime2 NOT NULL DEFAULT(sysutcdatetime()),
+  IsActive bit NOT NULL CONSTRAINT DF_SupplierPriceListItems_IsActive DEFAULT(1),
   CONSTRAINT FK_SupplierPriceListItems_SupplierPart FOREIGN KEY(SupplierPartId) REFERENCES dbo.SupplierParts(Id) ON DELETE NO ACTION
  );
 END
+IF COL_LENGTH(N'dbo.SupplierPriceListItems',N'IsActive') IS NULL
+ ALTER TABLE dbo.SupplierPriceListItems ADD IsActive bit NOT NULL CONSTRAINT DF_SupplierPriceListItems_IsActive DEFAULT(1);
 IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_SupplierPriceListItems_Lookup' AND object_id=OBJECT_ID(N'dbo.SupplierPriceListItems'))
  CREATE INDEX IX_SupplierPriceListItems_Lookup ON dbo.SupplierPriceListItems(SupplierPartId,ValidFrom,Id);
 
