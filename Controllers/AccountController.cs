@@ -43,6 +43,37 @@ public class AccountController(AppDbContext db,CompanySettingsService companySet
   await HttpContext.SignOutAsync();
   return RedirectToAction(nameof(Login));
 }
+ [Authorize][HttpPost][ValidateAntiForgeryToken]
+ public async Task<IActionResult> PingEvaluatorActivity()
+ {
+  if(!User.IsInRole("SUPPLIER_PART_ASSESSOR"))
+      return NoContent();
+
+  var userIdValue=User.FindFirst("UserId")?.Value;
+  if(!int.TryParse(userIdValue,out var userId))
+      return NoContent();
+
+  try
+  {
+      var now=DateTime.UtcNow;
+      var session=await db.UserActivitySessions
+          .Where(x=>x.UserId==userId&&x.LogoutAtUtc==null)
+          .OrderByDescending(x=>x.LoginAtUtc)
+          .FirstOrDefaultAsync();
+      if(session!=null)
+      {
+          session.LastSeenAtUtc=now;
+          session.DurationSeconds=Math.Max(0,(int)Math.Min(int.MaxValue,(now-session.LoginAtUtc).TotalSeconds));
+          await db.SaveChangesAsync();
+      }
+  }
+  catch
+  {
+      // Activity logging must never interrupt the evaluator experience.
+  }
+  return NoContent();
+ }
+
  [AllowAnonymous]public IActionResult Denied()=>Content("دسترسی به این بخش برای کاربر شما مجاز نیست.");
  public class LoginVm{public string? UserName{get;set;}public string? Password{get;set;}public string? returnUrl{get;set;}public CompanySettings Company{get;set;}=new();}
 }
