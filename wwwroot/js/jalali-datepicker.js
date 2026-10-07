@@ -184,7 +184,6 @@ function attach(input,trigger){
                 input.dispatchEvent(new Event("input",{bubbles:true}));
                 input.setAttribute("aria-expanded","false");
                 closePicker(state);
-                input.focus({preventScroll:true});
             });
             grid.appendChild(b);
         }
