@@ -48,7 +48,7 @@ function attach(input,trigger){
         picker.classList.add("open");
         picker.setAttribute("aria-hidden","false");
         positionPicker(input,picker);
-        active={input,picker};
+        active={input,picker,trigger};
     }
 
     function render(){
@@ -94,7 +94,7 @@ document.addEventListener("DOMContentLoaded",()=>{
         if(trigger)attach(input,trigger);
     });
     document.addEventListener("click",e=>{
-        if(active&&!active.picker.contains(e.target)&&e.target!==active.input){
+        if(active&&!active.picker.contains(e.target)&&e.target!==active.input&&e.target!==active.trigger){
             closePicker(active.picker);
         }
     });
