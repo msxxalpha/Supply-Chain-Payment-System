@@ -116,9 +116,12 @@ public class SupplierPartEvaluationController(AppDbContext db) : Controller
                     row.UpdatedAt = DateTime.UtcNow;
                 }
 
-                await RefreshAggregateAsync(supplierPartId, parameter.Id);
             }
 
+            // Persist all evaluator scores before calculating their averages.
+            await db.SaveChangesAsync();
+            foreach (var item in posted)
+                await RefreshAggregateAsync(supplierPartId, item.ParameterId);
             await db.SaveChangesAsync();
             await tx.CommitAsync();
 
@@ -188,7 +191,6 @@ public class SupplierPartEvaluationController(AppDbContext db) : Controller
             aggregate.UpdatedAt = DateTime.UtcNow;
         }
 
-        await db.SaveChangesAsync();
     }
 
     static int NormalizePageSize(int value) => value is 50 or 75 or 100 ? value : 25;
