@@ -18,6 +18,8 @@
 @if(User.HasClaim("Permission","Setup.Mappings")){<a class="nav-item @Active("/Setup/Mappings")" href="/Setup/Mappings"><span class="nav-icon">↔</span><span>ارتباط قطعه–تامین‌کننده</span></a>}
 @if(User.HasClaim("Permission","Setup.Evaluations")){<a class="nav-item @Active("/Setup/Evaluations")" href="/Setup/Evaluations"><span class="nav-icon">✓</span><span>ارزیابی قطعه–تامین‌کننده</span></a>}
 @if(User.HasClaim("Permission","Setup.Lookups")){<a class="nav-item @Active("/Setup/Lookups")" href="/Setup/Lookups"><span class="nav-icon">☷</span><span>سایر اطلاعات پایه</span></a>}
+@if(User.HasClaim("Permission","Setup.Queries")){<a class="nav-item @Active("/InputQueries")" href="/InputQueries"><span class="nav-icon">⌘</span><span>مدیریت کوئری‌ها</span></a>}
+@if(User.HasClaim("Permission","Setup.SupplierPriceList")){<a class="nav-item @Active("/SupplierPriceList")" href="/SupplierPriceList"><span class="nav-icon">▤</span><span>مدیریت فهرست بها تامین‌کنندگان</span></a>}
 </div>}
 @if(User.HasClaim("Permission","Users.Manage")){<div class="sidebar-section"><div class="sidebar-caption">امنیت</div><a class="nav-item @Active("/Users")" href="/Users"><span class="nav-icon">◉</span><span>مدیریت کاربران و دسترسی‌ها</span></a></div>}
 <div class="sidebar-footer"><div class="footer-dot"></div><div><div class="footer-title">وضعیت سامانه</div><div class="footer-status">در حال سرویس‌دهی</div></div></div></aside>
