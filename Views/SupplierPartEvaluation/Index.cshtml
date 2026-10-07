@@ -1,0 +1,95 @@
+@model Indamin.Payment.Controllers.SupplierPartEvaluationController.EvaluatorVm
+@using Indamin.Payment.Data
+@{
+    ViewData["Title"] = "ارزیابی قطعه–تامین‌کننده";
+    var totalPages = Math.Max(1, (int)Math.Ceiling(Model.TotalCount / (double)Model.PageSize));
+}
+<div class="page-header">
+    <div>
+        <div class="eyebrow">ارزیابی</div>
+        <h2>ارزیابی پارامترهای قطعه–تامین‌کننده</h2>
+        <p class="text-muted">امتیازهای شما برای هر قطعه–تامین‌کننده به‌صورت مستقل ثبت می‌شود و میانگین امتیاز ارزیابان، مبنای محاسبه پرداخت خواهد بود.</p>
+    </div>
+</div>
+
+@if (Model.Parameters.Count == 0)
+{
+    <div class="alert alert-warning">هیچ پارامتر پرداخت Manual که برای کاربر شما قابل ارزیابی باشد فعال نیست. مدیر سامانه باید دسترسی پارامترهای موردنظر را در بخش نقش‌ها و دسترسی‌ها فعال کند.</div>
+}
+else
+{
+    <div class="info-box mb-3">
+        <b>راهنمای امتیازدهی:</b> فقط پارامترهایی که دسترسی آن‌ها برای نقش شما فعال است نمایش داده می‌شوند. هر مقدار بین ۱ تا حداکثر امتیاز همان پارامتر ثبت می‌شود. میانگین همه ارزیابان در جدول فعلی ارزیابی قطعه–تامین‌کننده قرار می‌گیرد.
+    </div>
+
+    <div class="table-panel">
+        <form class="toolbar" method="get" action="/SupplierPartEvaluation">
+            <input class="form-control" name="q" value="@Model.Search" placeholder="جست‌وجوی تامین‌کننده، کد قطعه یا عنوان قطعه...">
+            <select class="form-select page-size-select" name="pageSize" onchange="this.form.submit()">
+                <option value="25" selected="@(Model.PageSize==25)">25 ردیف</option>
+                <option value="50" selected="@(Model.PageSize==50)">50 ردیف</option>
+                <option value="75" selected="@(Model.PageSize==75)">75 ردیف</option>
+                <option value="100" selected="@(Model.PageSize==100)">100 ردیف</option>
+            </select>
+            <button class="btn btn-outline-primary" type="submit">جست‌وجو</button>
+        </form>
+
+        @await Html.PartialAsync("_TablePagination", (Model.Page, totalPages, Model.PageSize, Model.Search ?? "", "/SupplierPartEvaluation"))
+
+        <div class="table-responsive table-scroll">
+            <table class="table modern-table align-middle">
+                <thead>
+                    <tr>
+                        <th>تامین‌کننده</th>
+                        <th>قطعه</th>
+                        @foreach (var p in Model.Parameters)
+                        {
+                            <th class="text-center">
+                                @p.Title
+                                <br><span class="subtle">حداکثر @p.MaxScore:0.##</span>
+                            </th>
+                        }
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var m in Model.Mappings)
+                {
+                    var formId = $"assess-form-{m.Id}";
+                    <tr>
+                        <td class="fw-bold">@m.Supplier?.Code - @m.Supplier?.Title</td>
+                        <td>@m.Part?.Code - @m.Part?.Title</td>
+                        @foreach (var p in Model.Parameters)
+                        {
+                            var mine = Model.MyScores.FirstOrDefault(x => x.SupplierPartId == m.Id && x.PaymentParameterId == p.Id);
+                            var avgScores = Model.AllScores.Where(x => x.SupplierPartId == m.Id && x.PaymentParameterId == p.Id).Select(x => x.Score).ToList();
+                            var average = avgScores.Count == 0 ? 1m : Math.Round(avgScores.Average(), 2);
+                            <td class="score-cell">
+                                <input form="@formId" class="form-control score-select" type="number" min="1" max="@p.MaxScore" step="0.1" name="items[@p.Id].Score" value="@(mine?.Score.ToString("0.##") ?? "")" placeholder="امتیاز">
+                                <input form="@formId" type="hidden" name="items[@p.Id].ParameterId" value="@p.Id">
+                                <small class="subtle d-block mt-1">میانگین: @average.ToString("0.##")</small>
+                            </td>
+                        }
+                        <td class="text-nowrap">
+                            <form id="@formId" method="post" action="/SupplierPartEvaluation/Save">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="supplierPartId" value="@m.Id">
+                                <input type="hidden" name="q" value="@Model.Search">
+                                <input type="hidden" name="page" value="@Model.Page">
+                                <input type="hidden" name="pageSize" value="@Model.PageSize">
+                            </form>
+                            <button form="@formId" class="btn btn-sm btn-main">ثبت امتیازها</button>
+                        </td>
+                    </tr>
+                }
+                @if (Model.Mappings.Count == 0)
+                {
+                    <tr><td colspan="@(Model.Parameters.Count + 3)" class="text-center text-muted py-4">موردی برای ارزیابی پیدا نشد.</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+
+        @await Html.PartialAsync("_TablePagination", (Model.Page, totalPages, Model.PageSize, Model.Search ?? "", "/SupplierPartEvaluation"))
+    </div>
+}
