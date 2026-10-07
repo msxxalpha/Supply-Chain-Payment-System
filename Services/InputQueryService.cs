@@ -192,28 +192,51 @@ public class InputQueryService(AppDbContext db, ReportCredentialProtector creden
         if (value is DateTime dt) return dt.Date;
         if (value is DateTimeOffset dto) return dto.Date;
 
-        var s = PersianDateService.ToLatinDigits(
-            Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim() ?? "");
-
-        if (string.IsNullOrWhiteSpace(s))
-            throw new FormatException($"{title} خالی است.");
-
-        // Warehouse systems often return the receipt date as a Jalali string
-        // such as 1405/07/15. Try this format before generic Gregorian parsing;
-        // otherwise .NET would interpret 1405 as a Gregorian year and the row
-        // would incorrectly fail the selected-date-range check.
-        var datePart = s.Split(new[] { ' ', 'T' }, 2, StringSplitOptions.RemoveEmptyEntries)[0];
-        if (Regex.IsMatch(datePart, @"^13\\d{2}/?\\d{2}/?\\d{2}$"))
+        try
         {
-            try { return PersianDateService.Parse(datePart.Replace('-', '/')).Date; }
-            catch { /* Fall through to the generic parser for a clearer error. */ }
+            return ParseQueryResultDate(
+                Convert.ToString(value, CultureInfo.InvariantCulture) ?? "");
+        }
+        catch
+        {
+            throw new FormatException($"{title} نامعتبر است.");
+        }
+    }
+
+    public static DateTime ParseQueryResultDate(string value)
+    {
+        var s = PersianDateService.ToLatinDigits(value?.Trim() ?? "");
+        if (string.IsNullOrWhiteSpace(s))
+            throw new FormatException("تاریخ خالی است.");
+
+        var datePart = s.Split(new[] { ' ', 'T' }, 2, StringSplitOptions.RemoveEmptyEntries)[0];
+
+        // SQL warehouse queries commonly return Jalali text, e.g. 1405/07/15.
+        // Parse 13xx/14xx as Jalali before generic DateTime parsing so .NET
+        // does not interpret 1405 as a Gregorian year.
+        if (Regex.IsMatch(datePart, @"^1[34]\d{2}[-/]\d{1,2}[-/]\d{1,2}$"))
+        {
+            try
+            {
+                return PersianDateService.Parse(datePart.Replace('-', '/')).Date;
+            }
+            catch (ArgumentException)
+            {
+                throw new FormatException("تاریخ شمسی نامعتبر است.");
+            }
         }
 
         if (DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var gregorian))
             return gregorian.Date;
 
-        try { return PersianDateService.Parse(datePart).Date; }
-        catch { throw new FormatException($"{title} نامعتبر است."); }
+        try
+        {
+            return PersianDateService.Parse(datePart).Date;
+        }
+        catch
+        {
+            throw new FormatException("تاریخ نامعتبر است.");
+        }
     }
 
     static string NormalizeHeader(string value) =>
