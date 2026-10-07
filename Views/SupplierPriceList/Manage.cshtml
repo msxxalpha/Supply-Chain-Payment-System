@@ -86,7 +86,7 @@
                         }
                     </td>
                 </tr>
-                @if (!used)
+                @if (x.IsActive && !used)
                 {
                     <tr class="edit-row" id="price-@x.Id">
                         <td colspan="6">
