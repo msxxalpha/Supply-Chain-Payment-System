@@ -138,15 +138,24 @@ public class InputQueryService(AppDbContext db, ReportCredentialProtector creden
 
     public static bool IsReadOnlyQuery(string sql)
     {
-        var text = Regex.Replace(sql ?? "", @"--.*?$|/*.*?*/", "", RegexOptions.Multiline | RegexOptions.Singleline).Trim();
-        text = Regex.Replace(text, @";s*$", "").Trim();
+        // Remove SQL single-line and block comments before validating the first statement.
+        var text = Regex.Replace(
+            sql ?? "",
+            @"--.*?$|/\*.*?\*/",
+            "",
+            RegexOptions.Multiline | RegexOptions.Singleline).Trim();
+
+        // Allow one optional trailing semicolon; reject any other statement separator.
+        text = Regex.Replace(text, @";\s*$", "").Trim();
 
         if (text.Length == 0 || text.Contains(';') ||
-            !Regex.IsMatch(text, @"^(SELECT|WITH)", RegexOptions.IgnoreCase))
+            !Regex.IsMatch(text, @"^(SELECT|WITH)\b", RegexOptions.IgnoreCase))
             return false;
 
-        return !Regex.IsMatch(text,
-            @"(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|TRUNCATE|CREATE|EXEC|EXECUTE|GRANT|REVOKE|DENY)",
+        // Only read-only SELECT/CTE statements are allowed for managed input queries.
+        return !Regex.IsMatch(
+            text,
+            @"\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|TRUNCATE|CREATE|EXEC|EXECUTE|GRANT|REVOKE|DENY)\b",
             RegexOptions.IgnoreCase);
     }
 
