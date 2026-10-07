@@ -29,6 +29,8 @@
  <div class="payment-kpi"><span>کل پرداخت غیرمحاسباتی</span><strong>@Model.PaymentTypes.NonCalculatedTotal.ToString("N0")</strong><small>شش نوع پرداخت غیرمحاسباتی</small></div>
 </div>
 
+<div class="form-panel mt-3"><div class="panel-title"><div><h4>مبنای محاسبه مطالبات جاری</h4><span>اطلاعات مؤثر در داشبورد مالی</span></div><span class="priority-pill">@((Model.CurrentClaimCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList)?"فهرست بها":"ریالی")</span></div><div class="supplier-debt-cards"><div><span>روش فعال</span><b>@((Model.CurrentClaimCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList)?"تعدادی بر اساس فهرست بها":"دریافت اطلاعات ریالی")</b></div><div><span>رسیدهای قیمت‌گذاری‌شده</span><b>@Model.PriceListPricedReceiptCount.ToString("N0")</b></div><div><span>نوبت‌های منبع انبار</span><b>@Model.WarehouseSourceRunCount.ToString("N0")</b></div></div></div>
+
 <div class="row g-3 mt-1">
  <div class="col-xl-7">
   <div class="form-panel">
