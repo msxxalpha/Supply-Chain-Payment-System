@@ -178,9 +178,13 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         var activeMappings = await db.SupplierParts
             .Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
             .AsNoTracking()
-            .Select(x => new { x.PartId, x.SupplierId })
+            .Select(x => new { x.Id, x.PartId, x.SupplierId })
             .ToListAsync();
-        var mappingKeys = activeMappings.Select(x => $"{x.PartId}:{x.SupplierId}").ToHashSet();
+        var mappingByPair = activeMappings.ToDictionary(x => (x.PartId, x.SupplierId), x => x.Id);
+        var mappingKeys = mappingByPair.Keys
+            .Select(x => $"{x.PartId}:{x.SupplierId}")
+            .ToHashSet();
+
         var mappingErrors = imported
             .Where(x => partByName.ContainsKey(Normalize(x.PartTitle)) && supplierByName.ContainsKey(Normalize(x.SupplierTitle)))
             .Select(x => new
@@ -195,6 +199,13 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             .OrderBy(x => x)
             .ToList();
         errors.AddRange(mappingErrors);
+
+        if (s.CurrentClaimCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList)
+        {
+            var priceListErrors = await FindMissingPriceListErrorsAsync(
+                imported, partByName, supplierByName, mappingByPair, source == PaymentReceiptSource.Excel);
+            errors.AddRange(priceListErrors);
+        }
 
         if (errors.Count > 0)
         {
@@ -218,10 +229,101 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         }
         catch (Exception ex)
         {
-            s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "calculation", Title = "کنترل و محاسبه بدهی", Errors = [ex.Message] }];
+            s.ImportErrorGroups = CategorizeImportErrors([ex.Message]);
             Save(s);
             return View("Step2", s);
         }
+    }
+
+    async Task<List<string>> FindMissingPriceListErrorsAsync(
+        IReadOnlyList<ImportedPaymentInvoice> imported,
+        IReadOnlyDictionary<string, dynamic> partByName,
+        IReadOnlyDictionary<string, dynamic> supplierByName,
+        IReadOnlyDictionary<(int PartId, int SupplierId), int> mappingByPair,
+        bool isExcel)
+    {
+        var mappedRows = imported
+            .Where(x => partByName.ContainsKey(Normalize(x.PartTitle))
+                     && supplierByName.ContainsKey(Normalize(x.SupplierTitle)))
+            .Select(x =>
+            {
+                var part = partByName[Normalize(x.PartTitle)];
+                var supplier = supplierByName[Normalize(x.SupplierTitle)];
+                var pair = (PartId: (int)part.Id, SupplierId: (int)supplier.Id);
+                return new
+                {
+                    x.RowNumber,
+                    x.ReceiptDate,
+                    PartId = pair.PartId,
+                    SupplierId = pair.SupplierId,
+                    PartTitle = part.Title,
+                    SupplierTitle = supplier.Title,
+                    MappingId = mappingByPair.GetValueOrDefault(pair)
+                };
+            })
+            .Where(x => x.MappingId > 0)
+            .ToList();
+
+        if (mappedRows.Count == 0) return [];
+
+        var mappingIds = mappedRows.Select(x => x.MappingId).Distinct().ToList();
+        var activePrices = await db.SupplierPriceListItems.AsNoTracking()
+            .Where(x => x.IsActive && mappingIds.Contains(x.SupplierPartId))
+            .Select(x => new { x.SupplierPartId, x.ValidFrom, x.ValidTo })
+            .ToListAsync();
+
+        var pricesByMapping = activePrices
+            .GroupBy(x => x.SupplierPartId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var errors = new List<string>();
+        foreach (var group in mappedRows.GroupBy(x => new
+                 {
+                     x.MappingId,
+                     x.PartId,
+                     x.SupplierId,
+                     x.PartTitle,
+                     x.SupplierTitle
+                 }))
+        {
+            pricesByMapping.TryGetValue(group.Key.MappingId, out var prices);
+            prices ??= [];
+
+            var missingDates = group
+                .GroupBy(x => x.ReceiptDate.Date)
+                .Select(g => new
+                {
+                    Date = g.Key,
+                    RowNumbers = g.Select(x => x.RowNumber).OrderBy(x => x).ToList()
+                })
+                .Where(x => !prices.Any(p => p.ValidFrom.Date <= x.Date && p.ValidTo.Date >= x.Date))
+                .OrderBy(x => x.Date)
+                .ToList();
+
+            if (missingDates.Count == 0) continue;
+
+            var rowsText = string.Join("، ", missingDates.SelectMany(x => x.RowNumbers).Distinct().OrderBy(x => x));
+            var sourceText = isExcel ? "سطرهای Excel" : "رکوردهای ورودی";
+
+            if (prices.Count == 0)
+            {
+                errors.Add(
+                    $"برای کالا «{group.Key.PartTitle}» و تامین‌کننده «{group.Key.SupplierTitle}» هیچ قیمت فعالی در فهرست بها ثبت نشده است؛ {sourceText}: {rowsText}.");
+            }
+            else
+            {
+                var datesText = string.Join("، ",
+                    missingDates.Select(x => PersianDateService.ToJalali(x.Date)));
+
+                errors.Add(
+                    $"برای کالا «{group.Key.PartTitle}» و تامین‌کننده «{group.Key.SupplierTitle}» در تاریخ‌های {datesText} قیمت معتبر در فهرست بها وجود ندارد؛ {sourceText}: {rowsText}.");
+            }
+        }
+
+        return errors
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
     }
 
     static List<PaymentImportErrorGroup> CategorizeImportErrors(List<string> errors)
@@ -233,6 +335,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             new PaymentImportErrorGroup { Key = "format", Title = "فرمت و ساختار فایل", Errors = [] },
             new PaymentImportErrorGroup { Key = "parts", Title = "کالاهای تعریف‌نشده یا غیرفعال", Errors = [] },
             new PaymentImportErrorGroup { Key = "suppliers", Title = "تامین‌کنندگان تعریف‌نشده یا غیرفعال", Errors = [] },
+            new PaymentImportErrorGroup { Key = "prices", Title = "فهرست بها؛ قیمت‌های ناموجود", Errors = [] },
             new PaymentImportErrorGroup { Key = "mapping", Title = "ارتباط‌های تعریف‌نشده کالا–تامین‌کننده", Errors = [] },
             new PaymentImportErrorGroup { Key = "other", Title = "سایر خطاهای کنترل اطلاعات", Errors = [] }
         };
@@ -256,6 +359,11 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             || error.Contains("فرمت", StringComparison.OrdinalIgnoreCase)
             || error.Contains("Excel", StringComparison.OrdinalIgnoreCase))
             return groups.First(x => x.Key == "format");
+
+        if (error.Contains("فهرست بها", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("قیمت معتبر", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("قیمت فعالی", StringComparison.OrdinalIgnoreCase))
+            return groups.First(x => x.Key == "prices");
 
         if (error.Contains("ارتباط فعال بین کالا", StringComparison.OrdinalIgnoreCase)
             || error.Contains("قطعه–تامین‌کننده", StringComparison.OrdinalIgnoreCase)
