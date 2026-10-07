@@ -203,24 +203,21 @@ public class PaymentCalculationService(AppDbContext db)
             throw new InvalidOperationException("داده خام رسیدهای این محاسبه در نشست موجود نیست؛ اطلاعات رسیدها را مجدداً دریافت کنید.");
 
         var previous = await PreviousCurrentAsync();
+        var mappingByPair = await db.SupplierParts.AsNoTracking()
+            .Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
+            .Select(x => new { x.Id, x.PartId, x.SupplierId })
+            .ToListAsync();
+        var mappingIdsByPair = mappingByPair.ToDictionary(x => (x.PartId, x.SupplierId), x => x.Id);
         Dictionary<int, List<SupplierPriceListItem>> pricesByMapping = [];
         if (s.CurrentClaimCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList)
         {
-            var mappingIds = s.Rows.Where(x => x.SupplierId.HasValue && x.PartId.HasValue)
-                .Select(x => db.SupplierParts.Where(m => m.SupplierId == x.SupplierId && m.PartId == x.PartId).Select(m => m.Id).FirstOrDefault())
-                .ToList();
+            var mappingIds = mappingIdsByPair.Values.Distinct().ToList();
             var prices = await db.SupplierPriceListItems.AsNoTracking()
                 .Where(x => mappingIds.Contains(x.SupplierPartId))
                 .OrderByDescending(x => x.ValidFrom).ThenByDescending(x => x.Id)
                 .ToListAsync();
             pricesByMapping = prices.GroupBy(x => x.SupplierPartId).ToDictionary(g => g.Key, g => g.ToList());
         }
-
-        var mappingByPair = await db.SupplierParts.AsNoTracking()
-            .Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
-            .Select(x => new { x.Id, x.PartId, x.SupplierId })
-            .ToListAsync();
-        var mappingIdsByPair = mappingByPair.ToDictionary(x => (x.PartId, x.SupplierId), x => x.Id);
 
         foreach (var row in s.Rows)
         {
