@@ -31,3 +31,24 @@ public class InputQueryServiceTests
         Assert.True(InputQueryService.IsReadOnlyQuery(sql));
     }
 }
+    [Theory]
+    [InlineData("1405/07/15", "2026-10-07")]
+    [InlineData("۱۴۰۵/۰۷/۱۵", "2026-10-07")]
+    [InlineData("1405-07-15 00:00:00", "2026-10-07")]
+    public void ParseQueryResultDate_ParsesJalaliReceiptDates(string value, string expectedGregorian)
+    {
+        var actual = InputQueryService.ParseQueryResultDate(value);
+        Assert.Equal(DateTime.Parse(expectedGregorian).Date, actual);
+    }
+
+    [Fact]
+    public void ParseQueryResultDate_StillParsesGregorianSqlDates()
+    {
+        var actual = InputQueryService.ParseQueryResultDate("2026-10-07 14:30:00");
+        Assert.Equal(new DateTime(2026, 10, 7), actual);
+    }
+
+    [Fact]
+    public void ParseQueryResultDate_RejectsInvalidJalaliDate()
+        => Assert.Throws<FormatException>(() => InputQueryService.ParseQueryResultDate("1405/12/30"));
+
