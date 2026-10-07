@@ -30,7 +30,6 @@ public class InputQueryServiceTests
         var sql = "/* SELECT; UPDATE */ -- trailing comment\nSELECT * FROM dbo.Items;";
         Assert.True(InputQueryService.IsReadOnlyQuery(sql));
     }
-}
     [Theory]
     [InlineData("1405/07/15", "2026-10-07")]
     [InlineData("۱۴۰۵/۰۷/۱۵", "2026-10-07")]
@@ -51,4 +50,4 @@ public class InputQueryServiceTests
     [Fact]
     public void ParseQueryResultDate_RejectsInvalidJalaliDate()
         => Assert.Throws<FormatException>(() => InputQueryService.ParseQueryResultDate("1405/12/30"));
-
+}
