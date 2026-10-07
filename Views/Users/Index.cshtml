@@ -7,6 +7,7 @@
  <ul class="nav nav-tabs" role="tablist">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#users-pane" type="button">کاربران</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#roles-pane" type="button">نقش‌ها و دسترسی‌ها</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#activity-pane" type="button">فعالیت ارزیابان</button></li>
  </ul>
  <div class="tab-content">
   <div class="tab-pane fade show active" id="users-pane">
@@ -134,6 +135,32 @@
    </div>
   </div>
  </div>
+  <div class="tab-pane fade" id="activity-pane">
+   <div class="form-panel mt-3">
+    <div class="panel-title"><div><h4>لاگ حضور ارزیابان قطعه–تامین‌کننده</h4><span>مدت حضور از زمان ورود تا خروج یا آخرین فعالیت محاسبه می‌شود.</span></div><span class="validation-chip validation-ok">@Model.ActivitySessions.Count.ToString("N0") نشست اخیر</span></div>
+    <div class="table-responsive table-scroll">
+     <table class="table modern-table align-middle">
+      <thead><tr><th>کاربر</th><th>ورود</th><th>آخرین فعالیت</th><th>خروج</th><th>مدت حضور</th><th>وضعیت</th></tr></thead>
+      <tbody>
+      @foreach(var x in Model.ActivitySessions)
+      {
+          var duration=TimeSpan.FromSeconds(Math.Max(0,x.DurationSeconds));
+          <tr>
+           <td class="fw-bold">@x.User?.DisplayName</td>
+           <td>@PersianDateService.ToJalali(x.LoginAtUtc.ToLocalTime()) @x.LoginAtUtc.ToLocalTime().ToString("HH:mm:ss")</td>
+           <td>@PersianDateService.ToJalali(x.LastSeenAtUtc.ToLocalTime()) @x.LastSeenAtUtc.ToLocalTime().ToString("HH:mm:ss")</td>
+           <td>@(x.LogoutAtUtc.HasValue ? PersianDateService.ToJalali(x.LogoutAtUtc.Value.ToLocalTime())+" "+x.LogoutAtUtc.Value.ToLocalTime().ToString("HH:mm:ss") : "—")</td>
+           <td class="amount-emphasis">@($"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}")</td>
+           <td>@(x.LogoutAtUtc.HasValue ? "خارج شده" : "فعال / آخرین فعالیت ثبت‌شده")</td>
+          </tr>
+      }
+      @if(Model.ActivitySessions.Count==0){<tr><td colspan="6" class="text-center text-muted py-4">هنوز نشست ارزیابی ثبت نشده است.</td></tr>}
+      </tbody>
+     </table>
+    </div>
+    <div class="form-hint mt-2">در صورت بسته شدن مرورگر بدون خروج، مدت حضور بر مبنای آخرین درخواست ثبت‌شده محاسبه می‌شود.</div>
+   </div>
+  </div>
 </div>
 <style>
 .permission-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.permission-group{border:1px solid var(--line);border-radius:13px;background:#f9fbfc;padding:13px}.permission-group h5{font-size:11px;margin:0 0 9px}.permission-item{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-top:1px solid #edf1f4;font-size:10px}.permission-item:first-of-type{border-top:0}.permission-item input{margin-top:3px}.permission-item b{display:block;color:var(--navy)}.permission-item small{display:block;color:#92a1ad;font-size:8px;margin-top:2px;direction:ltr;text-align:right}
