@@ -53,20 +53,6 @@ public class PaymentCalculationService(AppDbContext db)
 
         var previousCurrent = await PreviousCurrentAsync();
         var aggregated = Aggregate(imported).ToList();
-        var remainingByKey = aggregated.ToDictionary(
-            x => KeyHash(x.ReceiptNo, x.Warehouse, x.PartTitle, x.SupplierTitle),
-            x => Math.Max(0, Math.Round(x.DebtAmount - previousCurrent.GetValueOrDefault(KeyHash(x.ReceiptNo, x.Warehouse, x.PartTitle, x.SupplierTitle)), 2)));
-
-        var currentBySupplier = aggregated.GroupBy(x => Normalize(x.SupplierTitle)).ToDictionary(
-            g => g.Key,
-            g => g.Sum(x => remainingByKey[KeyHash(x.ReceiptNo, x.Warehouse, x.PartTitle, x.SupplierTitle)]));
-
-        var initialBySupplier = suppliers.ToDictionary(x => x.Id, x => x.InitialClaimAmount);
-        var currentBySupplierId = supplierByName.Where(x => initialBySupplier.ContainsKey(x.Value.Id))
-            .ToDictionary(x => x.Value.Id, x => currentBySupplier.GetValueOrDefault(x.Key));
-        var totalCurrentOutstanding = currentBySupplierId.Values.Sum();
-        var totalOutstandingForScore = totalCurrentOutstanding + suppliers.Sum(x => x.InitialClaimAmount);
-
         var rows = new List<PaymentCalculationRow>();
 
         foreach (var x in aggregated)
@@ -102,7 +88,7 @@ public class PaymentCalculationService(AppDbContext db)
             }
             var remaining = Math.Max(0, Math.Round(debtAmount - prior, 2));
             var age = (s.CalcDate() - x.ReceiptDate.Date).Days;
-            var supplierCurrent = currentBySupplierId.GetValueOrDefault(supplier.Id);
+            var supplierCurrent = 0m;
             var supplierInitial = supplier.InitialClaimAmount;
 
             var row = new PaymentCalculationRow
@@ -152,7 +138,7 @@ public class PaymentCalculationService(AppDbContext db)
                 }
                 else if (parameter.ScoringMethod == ParameterScoringMethod.DebtAmount)
                 {
-                    raw = SupplierDebtAmountScore(supplierCurrent + supplierInitial, totalOutstandingForScore);
+                    raw = 1m;
                     source = "محاسبه خودکار";
                 }
                 else
@@ -180,6 +166,29 @@ public class PaymentCalculationService(AppDbContext db)
                 row.Warning = "این بدهی قبلاً به‌طور کامل از محل مطالبات جاری تخصیص یافته و در این نوبت مبلغی دریافت نمی‌کند.";
 
             rows.Add(row);
+        }
+
+        var currentBySupplierId = rows.Where(x => x.SupplierId.HasValue)
+            .GroupBy(x => x.SupplierId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.RemainingDebt));
+        var totalCurrentOutstanding = currentBySupplierId.Values.Sum();
+        var totalOutstandingForScore = totalCurrentOutstanding + suppliers.Sum(x => x.InitialClaimAmount);
+        foreach (var row in rows)
+        {
+            var supplierInitial = row.SupplierInitialClaimAmount;
+            var supplierCurrent = currentBySupplierId.GetValueOrDefault(row.SupplierId ?? 0);
+            row.SupplierOutstandingDebt = supplierCurrent + supplierInitial;
+            foreach (var score in row.Scores)
+            {
+                var parameter = parameters.FirstOrDefault(x => x.Id == score.ParameterId);
+                if (parameter?.ScoringMethod == ParameterScoringMethod.DebtAmount)
+                {
+                    score.Score = SupplierDebtAmountScore(row.SupplierOutstandingDebt, totalOutstandingForScore);
+                    score.Contribution = Math.Round(score.Score * score.Weight / 100m, 6);
+                    score.Source = "محاسبه خودکار";
+                }
+            }
+            row.WeightedScore = row.Scores.Sum(x => x.Contribution);
         }
 
         s.Parameters = Snapshot(parameters);
