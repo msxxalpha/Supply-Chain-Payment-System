@@ -423,7 +423,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
     }
 
 
-    static List<PaymentImportErrorGroup> CategorizeImportErrors
+    static List<PaymentImportErrorGroup> CategorizeImportErrors(List<string> errors)
     {
         // همه خطاهای یک بارگذاری در یک مجموعه واحد تجمیع می‌شوند.
         // دسته‌بندی صریح است تا هر خطا فقط یک‌بار و در تب مناسب نمایش داده شود.
