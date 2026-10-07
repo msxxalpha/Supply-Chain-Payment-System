@@ -698,7 +698,10 @@ public record PaymentCurrentReceiptSnapshot(
     decimal OriginalDebt,
     DateTime ReceiptDate,
     decimal RemainingDebt,
-    int ContractSettlementDays);
+    int ContractSettlementDays,
+    CurrentClaimCalculationMethod DebtCalculationMethod,
+    long? PriceListItemId,
+    decimal AppliedUnitPrice);
 
 public static class PaymentWizardStateExtensions
 {
