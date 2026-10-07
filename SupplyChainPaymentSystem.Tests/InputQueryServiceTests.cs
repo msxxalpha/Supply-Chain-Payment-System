@@ -1,4 +1,5 @@
 using Indamin.Payment.Services;
+using Indamin.Payment.Controllers;
 using Xunit;
 
 namespace Indamin.Payment.Tests;
@@ -50,4 +51,18 @@ public class InputQueryServiceTests
     [Fact]
     public void ParseQueryResultDate_RejectsInvalidJalaliDate()
         => Assert.Throws<FormatException>(() => InputQueryService.ParseQueryResultDate("1405/12/30"));
+    [Fact]
+    public void ExtractImportErrorRowNumbers_ParsesSingleAndGroupedRows()
+    {
+        var errors = new[]
+        {
+            "سطر 2: مقدار رسید نامعتبر است.",
+            "کالا «X» در اطلاعات پایه تعریف نشده یا فعال نیست؛ سطرهای Excel: 5، 8.",
+            "برای کالا «Y» و تامین‌کننده «Z» قیمت معتبر وجود ندارد؛ رکوردهای ورودی: 11، 14."
+        };
+
+        Assert.Equal(new[] { 2, 5, 8, 11, 14 }, PaymentWizardController.ExtractImportErrorRowNumbers(errors));
+    }
+
+
 }
