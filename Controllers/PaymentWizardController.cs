@@ -85,6 +85,9 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
         if (file == null || file.Length == 0)
         {
+            s.ImportErrorsIgnored = false;
+            s.CanIgnoreImportErrors = false;
+            s.IgnoredImportRowNumbers = [];
             s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "file", Title = "فرمت و ساختار فایل", Errors = ["فایل Excel انتخاب نشده است."] }];
             Save(s);
             return View("Step2", s);
@@ -97,6 +100,9 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         }
         catch (Exception ex)
         {
+            s.ImportErrorsIgnored = false;
+            s.CanIgnoreImportErrors = false;
+            s.IgnoredImportRowNumbers = [];
             s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "system", Title = "خطای پردازش فایل", Errors = [ex.Message] }];
             Save(s);
             return View("Step2", s);
@@ -123,6 +129,9 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             var result = await inputQueries.ExecuteInventoryReceiptsAsync(from, to);
             if (!result.Success && result.Rows.Count == 0)
             {
+                s.ImportErrorsIgnored = false;
+                s.CanIgnoreImportErrors = false;
+                s.IgnoredImportRowNumbers = [];
                 s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "warehouse-query", Title = "کوئری زیرسیستم انبار", Errors = result.Errors }];
                 s.Rows = [];
                 s.Parameters = [];
@@ -139,6 +148,9 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         }
         catch (Exception ex)
         {
+            s.ImportErrorsIgnored = false;
+            s.CanIgnoreImportErrors = false;
+            s.IgnoredImportRowNumbers = [];
             s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "warehouse-query", Title = "اجرای کوئری زیرسیستم انبار", Errors = [ex.Message] }];
             Save(s);
             return View("Step2", s);
@@ -223,6 +235,11 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         {
             s.IgnoredImportRowNumbers = ExtractImportErrorRowNumbers(errors);
             s.ImportErrorsIgnored = false;
+            s.CanIgnoreImportErrors = s.IgnoredImportRowNumbers.Count > 0
+                && errors
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .All(x => ExtractImportErrorRowNumbers([x]).Count > 0);
             s.Rows = [];
             s.Parameters = [];
             s.ImportedDebt = imported.Sum(x => x.DebtAmount);
@@ -377,9 +394,9 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         var s = Load();
         if (s == null) return RedirectToAction(nameof(Step1));
 
-        if (!ignoreErrors || s.IgnoredImportRowNumbers.Count == 0)
+        if (!ignoreErrors || !s.CanIgnoreImportErrors || s.IgnoredImportRowNumbers.Count == 0)
         {
-            TempData["Error"] = "برای ادامه، گزینه نادیده گرفتن خطاهای رکوردی را فعال کنید.";
+            TempData["Error"] = "خطاهای موجود قابل نادیده گرفتن نیستند یا گزینه مربوطه فعال نشده است.";
             return RedirectToAction(nameof(Step2));
         }
 
@@ -409,6 +426,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             s.ImportedDebt = validRows.Sum(x => x.DebtAmount);
             s.RemainingDebt = s.ImportedDebt;
             s.ImportErrorGroups = [];
+            s.CanIgnoreImportErrors = false;
             await calc.CalculateAsync(s, validRows);
             Save(s);
             TempData["Result"] = $"{ignored.Count:N0} رکورد خطادار نادیده گرفته شد و محاسبه با {validRows.Count:N0} رکورد سالم انجام شد.";
@@ -416,6 +434,9 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         }
         catch (Exception ex)
         {
+            s.ImportErrorsIgnored = false;
+            s.CanIgnoreImportErrors = false;
+            s.IgnoredImportRowNumbers = [];
             s.ImportErrorGroups = CategorizeImportErrors([ex.Message]);
             Save(s);
             return View("Step2", s);
