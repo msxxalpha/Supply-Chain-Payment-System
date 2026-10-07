@@ -14,7 +14,7 @@
  <div class="col-md-4"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="TrustServerCertificate" value="true" checked="@Model.TrustServerCertificate"> اعتماد به گواهی سرور</label></div>
  <div class="col-md-3"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="Enabled" value="true" checked="@Model.Enabled"> کوئری فعال</label></div>
  <div class="col-12"><label class="form-label">متن SQL</label><textarea class="form-control" name="SqlText" rows="16" dir="ltr" style="font-family:Consolas,monospace" required>@Model.SqlText</textarea></div>
- <div class="col-12"><div class="info-box"><b>قواعد ایمنی:</b> فقط یک دستور SELECT یا WITH خواندنی مجاز است؛ INSERT، UPDATE، DELETE، MERGE، DROP، ALTER، EXEC و چند دستور با ; پذیرفته نمی‌شود. برای کوئری رسید انبار از @FromDate و @ToDate استفاده کنید.</div></div>
+ <div class="col-12"><div class="info-box"><b>قواعد ایمنی:</b> فقط یک دستور SELECT یا WITH خواندنی مجاز است؛ INSERT، UPDATE، DELETE، MERGE، DROP، ALTER، EXEC و چند دستور با ; پذیرفته نمی‌شود. برای کوئری رسید انبار از @@FromDate و @@ToDate استفاده کنید.</div></div>
 </div>
 @if(!ViewData.ModelState.IsValid){<div class="alert alert-danger mt-3">@foreach(var e in ViewData.ModelState.Values.SelectMany(v=>v.Errors)){<div>@e.ErrorMessage</div>}</div>}
 <div class="step-actions"><span class="subtle">رمز عبور به‌صورت رمزنگاری‌شده نگهداری می‌شود.</span><button class="btn btn-main btn-lg">ذخیره کوئری</button></div>
