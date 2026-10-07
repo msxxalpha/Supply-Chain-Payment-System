@@ -212,15 +212,46 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
                 return RedirectToAction(nameof(Index));
             }
 
-            var pairIds = rows.Select(x => (x.SupplierId, x.PartId)).Distinct().ToList();
-            var mappings = await db.SupplierParts
-                .Where(x => pairIds.Contains(new ValueTuple<int,int>(x.SupplierId, x.PartId)))
-                .ToDictionaryAsync(x => $"{x.SupplierId}:{x.PartId}", x => x.Id);
-
-            var exactKeys = rows.Select(x => $"{mappings[$"{x.SupplierId}:{x.PartId}"]}:{x.ValidFrom:yyyyMMdd}:{x.ValidTo:yyyyMMdd}").ToList();
-            var existing = await db.SupplierPriceListItems
-                .Where(x => exactKeys.Contains(x.SupplierPartId + ":" + x.ValidFrom.Year + x.ValidFrom.Month.ToString("00") + x.ValidFrom.Day.ToString("00") + ":" + x.ValidTo.Year + x.ValidTo.Month.ToString("00") + x.ValidTo.Day.ToString("00")))
+            var supplierIds = rows.Select(x => x.SupplierId).Distinct().ToList();
+            var partIds = rows.Select(x => x.PartId).Distinct().ToList();
+            var mappingRows = await db.SupplierParts
+                .Where(x => supplierIds.Contains(x.SupplierId) && partIds.Contains(x.PartId))
                 .ToListAsync();
+            var mappings = mappingRows
+                .Where(x => x.IsActive)
+                .ToDictionary(x => $"{x.SupplierId}:{x.PartId}", x => x.Id);
+
+            foreach (var item in rows)
+            {
+                if (!mappings.TryGetValue($"{item.SupplierId}:{item.PartId}", out var mappingId))
+                    throw new InvalidOperationException($"ارتباط فعال تامین‌کننده و کالا برای سطر {item.RowNumber} پیدا نشد.");
+
+                var current = await db.SupplierPriceListItems.FirstOrDefaultAsync(x =>
+                    x.SupplierPartId == mappingId &&
+                    x.ValidFrom == item.ValidFrom &&
+                    x.ValidTo == item.ValidTo);
+
+                if (current != null)
+                {
+                    if (await IsUsedAsync(current.Id))
+                        throw new InvalidOperationException($"رکورد فهرست بها برای سطر {item.RowNumber} قبلاً در محاسبه استفاده شده است و قابل جایگزینی نیست.");
+
+                    current.PurchasePrice = item.PurchasePrice;
+                    current.UpdatedAt = DateTime.UtcNow;
+                }
+                else
+                {
+                    db.SupplierPriceListItems.Add(new SupplierPriceListItem
+                    {
+                        SupplierPartId = mappingId,
+                        PurchasePrice = item.PurchasePrice,
+                        ValidFrom = item.ValidFrom,
+                        ValidTo = item.ValidTo,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    });
+                }
+            }
 
             foreach (var item in rows)
             {
