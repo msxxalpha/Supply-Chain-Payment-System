@@ -73,7 +73,17 @@
                 <div class="modal-body">
                     <label class="form-label">فایل Excel</label>
                     <input class="form-control" type="file" name="file" accept=".xlsx,.xls" required>
-                    <div class="form-hint mt-2">ستون‌های الزامی: کد تامین کننده، کد قطعه، قیمت خرید (فی)، تاریخ شروع، تاریخ پایان. تاریخ‌ها شمسی هستند.</div>
+                    <div class="excel-column-guide price-excel-guide mt-3">
+                        <h5>راهنمای ترتیب ستون‌های فایل Excel فهرست بها</h5>
+                        <div class="guide-columns">
+                            <div class="guide-col"><b><span class="num">۱</span>کد تامین کننده</b><small>الزامی؛ باید در اطلاعات پایه تامین‌کنندگان وجود داشته باشد. نمونه: SUP-001</small></div>
+                            <div class="guide-col"><b><span class="num">۲</span>کد قطعه</b><small>الزامی؛ باید در اطلاعات پایه کالاها وجود داشته باشد و با همان تامین‌کننده ارتباط داشته باشد.</small></div>
+                            <div class="guide-col"><b><span class="num">۳</span>قیمت خرید (فی)</b><small>قیمت هر واحد؛ عددی بزرگ‌تر از صفر، با امکان ثبت اعشار.</small></div>
+                            <div class="guide-col"><b><span class="num">۴</span>تاریخ شروع</b><small>تاریخ شروع اعتبار قیمت به تقویم شمسی؛ نمونه: ۱۴۰۵/۰۱/۰۱</small></div>
+                            <div class="guide-col"><b><span class="num">۵</span>تاریخ پایان</b><small>تاریخ پایان اعتبار قیمت به تقویم شمسی و نباید قبل از تاریخ شروع باشد.</small></div>
+                        </div>
+                        <div class="form-hint mt-2">ردیف اول فایل باید دقیقاً عنوان ستون‌ها را داشته باشد. تعریف بازه‌های زمانی هم‌پوشان مجاز است؛ در محاسبات، آخرین قیمت منطبق با تاریخ رسید ملاک خواهد بود.</div>
+                    </div>
                     <div class="info-box mt-3">ورود فایل اتمیک است؛ اگر حتی یک ردیف خطای ساختاری، کالا/تامین‌کننده نامعتبر یا ارتباط فعال نداشته باشد، هیچ ردیفی از فایل ذخیره نمی‌شود.</div>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">انصراف</button><button class="btn btn-main">ورود فهرست بها</button></div>
