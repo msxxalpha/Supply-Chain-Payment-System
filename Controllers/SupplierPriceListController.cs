@@ -139,7 +139,7 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
             row.ValidTo = to;
             row.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
-            await LogAsync("UPDATE", "SupplierPriceListItem", id.ToString(), $"ویرایش نرخ {row.Part!.Title} / {row.Supplier!.Title}");
+            await LogAsync("UPDATE", "SupplierPriceListItem", id.ToString(), $"ویرایش نرخ {row.SupplierPart!.Part!.Title} / {row.SupplierPart.Supplier!.Title}");
             TempData["Result"] = "رکورد فهرست بها به‌روزرسانی شد.";
         }
         catch (Exception ex)
@@ -253,35 +253,6 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
                 }
             }
 
-            foreach (var item in rows)
-            {
-                var mappingId = mappings[$"{item.SupplierId}:{item.PartId}"];
-                var current = existing.FirstOrDefault(x =>
-                    x.SupplierPartId == mappingId &&
-                    x.ValidFrom.Date == item.ValidFrom.Date &&
-                    x.ValidTo.Date == item.ValidTo.Date);
-
-                if (current != null)
-                {
-                    if (await IsUsedAsync(current.Id))
-                        throw new InvalidOperationException($"رکورد فهرست بها برای تامین‌کننده {item.SupplierId} و کالا {item.PartId} در این بازه قبلاً در محاسبه استفاده شده است و قابل جایگزینی نیست.");
-
-                    current.PurchasePrice = item.PurchasePrice;
-                    current.UpdatedAt = DateTime.UtcNow;
-                }
-                else
-                {
-                    db.SupplierPriceListItems.Add(new SupplierPriceListItem
-                    {
-                        SupplierPartId = mappingId,
-                        PurchasePrice = item.PurchasePrice,
-                        ValidFrom = item.ValidFrom,
-                        ValidTo = item.ValidTo,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    });
-                }
-            }
 
             await db.SaveChangesAsync();
             await LogAsync("IMPORT", "SupplierPriceListItem", "EXCEL", $"ورود تجمیعی {rows.Count} ردیف فهرست بها");
