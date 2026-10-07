@@ -122,9 +122,14 @@ public class InputQueryService(AppDbContext db, ReportCredentialProtector creden
                 rowNumber++;
             }
 
-            return errors.Count == 0
-                ? new(true, rows, [], $"تعداد {rows.Count:N0} رسید از زیرسیستم انبار دریافت شد.")
-                : new(false, [], errors.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), "");
+            var distinctErrors = errors.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            return new(
+                true,
+                rows,
+                distinctErrors,
+                distinctErrors.Count == 0
+                    ? $"تعداد {rows.Count:N0} رسید از زیرسیستم انبار دریافت شد."
+                    : $"تعداد {rows.Count:N0} رکورد معتبر از زیرسیستم انبار دریافت شد و {distinctErrors.Count:N0} خطای رکوردی نیز شناسایی شد.");
         }
         catch (SqlException ex)
         {
