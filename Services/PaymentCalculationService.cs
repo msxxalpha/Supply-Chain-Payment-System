@@ -36,7 +36,7 @@ public class PaymentCalculationService(AppDbContext db)
         {
             var mappingIds = mappings.Select(x => x.Id).ToList();
             var prices = await db.SupplierPriceListItems.AsNoTracking()
-                .Where(x => mappingIds.Contains(x.SupplierPartId) && x.IsActive)
+                .Where(x => mappingIds.Contains(x.SupplierPartId) && x.IsActive && x.PurchasePrice > 0)
                 .OrderByDescending(x => x.ValidFrom).ThenByDescending(x => x.Id)
                 .ToListAsync();
             pricesByMapping = prices.GroupBy(x => x.SupplierPartId)
