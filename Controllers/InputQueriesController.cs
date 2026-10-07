@@ -77,7 +77,7 @@ public class InputQueriesController(AppDbContext db, ReportCredentialProtector p
                     DatabaseName = model.DatabaseName,
                     AuthenticationMode = model.AuthenticationMode,
                     Username = model.Username,
-                    PasswordProtected = string.IsNullOrWhiteSpace(password) ? "" : protector.Protect(password),
+                    PasswordProtected = model.AuthenticationMode == "windows" || string.IsNullOrWhiteSpace(password) ? "" : protector.Protect(password),
                     Encrypt = model.Encrypt,
                     TrustServerCertificate = model.TrustServerCertificate,
                     Enabled = model.Enabled,
