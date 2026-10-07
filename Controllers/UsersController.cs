@@ -14,13 +14,14 @@ public class UsersController(AppDbContext db):Controller
 
  [HttpGet]
  public async Task<IActionResult> Index(){
+  var activitySessions=await db.UserActivitySessions.AsNoTracking().Include(x=>x.User).Where(x=>x.RoleCode=="SUPPLIER_PART_ASSESSOR").OrderByDescending(x=>x.LoginAtUtc).Take(200).ToListAsync();
   var users=await db.Users.AsNoTracking().OrderBy(x=>x.UserName).ToListAsync();
   var userRoles=await db.UserRoles.Include(x=>x.Role).AsNoTracking().ToListAsync();
   var roles=await db.Roles.OrderBy(x=>x.IsSystem?0:1).ThenBy(x=>x.Title).ToListAsync();
   var permissions=await db.Permissions.OrderBy(x=>x.GroupTitle).ThenBy(x=>x.SortOrder).ToListAsync();
   var rolePermissions=await db.RolePermissions.AsNoTracking().GroupBy(x=>x.RoleId).ToDictionaryAsync(g=>g.Key,g=>g.Select(x=>x.PermissionId).ToList());
   var userRows=users.Select(u=>new UserRow(u.Id,u.UserName,u.DisplayName,u.IsAdmin,u.IsActive,userRoles.Where(x=>x.UserId==u.Id).Select(x=>x.RoleId).ToList(),userRoles.Where(x=>x.UserId==u.Id&&x.Role!=null).Select(x=>x.Role!.Title).OrderBy(x=>x).ToList())).ToList();
-  return View(new UsersVm(userRows,roles,permissions,rolePermissions));
+  return View(new UsersVm(userRows,roles,permissions,rolePermissions,activitySessions));
  }
 
  [HttpPost][ValidateAntiForgeryToken]
@@ -58,5 +59,5 @@ public class UsersController(AppDbContext db):Controller
  }
 
  public record UserRow(int Id,string UserName,string DisplayName,bool IsAdmin,bool IsActive,List<int> RoleIds,List<string> RoleTitles);
- public record UsersVm(List<UserRow> Users,List<AppRole> Roles,List<AppPermission> Permissions,Dictionary<int,List<int>> RolePermissionIds);
+ public record UsersVm(List<UserRow> Users,List<AppRole> Roles,List<AppPermission> Permissions,Dictionary<int,List<int>> RolePermissionIds,List<UserActivitySession> ActivitySessions);
 }
