@@ -1,4 +1,5 @@
 @model Indamin.Payment.Controllers.SupplierPriceListController.SupplierPriceListManageVm
+@using Indamin.Payment.Services
 @{
     ViewData["Title"] = "فهرست بها؛ " + Model.Supplier.Title;
     var totalPages = Math.Max(1, (int)Math.Ceiling(Model.TotalCount / (double)Model.PageSize));
