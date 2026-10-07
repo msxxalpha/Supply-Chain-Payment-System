@@ -27,6 +27,8 @@
  <div class="payment-kpi"><span>پرداخت غیرمحاسباتی</span><strong>@Model.PaymentTypes.NonCalculatedTotal.ToString("N0")</strong><small>@Model.PaymentOrderedRuns نوبت دستورپرداخت‌شده</small></div>
 </div>
 
+<div class="form-panel mt-3"><div class="panel-title"><div><h4>مبنای محاسبه مطالبات جاری</h4><span>تنظیم فعال سیستم و وضعیت استفاده از فهرست بها</span></div><span class="validation-chip validation-ok">@((Model.CurrentClaimCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList)?"تعدادی بر اساس فهرست بها":"دریافت اطلاعات ریالی")</span></div><div class="supplier-debt-cards"><div><span>روش فعال</span><b>@((Model.CurrentClaimCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList)?"تعدادی بر اساس فهرست بها":"دریافت اطلاعات ریالی")</b></div><div><span>رسیدهای محاسبه‌شده با فهرست بها</span><b>@Model.PriceListPricedReceiptCount.ToString("N0")</b></div><div><span>نوبت‌های دریافت مستقیم از انبار</span><b>@Model.WarehouseSourceRunCount.ToString("N0")</b></div><div><span>فهرست بها</span><b>@if(User.HasClaim("Permission","Setup.SupplierPriceList")){<a href="/SupplierPriceList">مدیریت</a>}else{<span>—</span>}</b></div></div></div>
+
 <div class="row g-3 mt-1">
  <div class="col-xl-7">
   <div class="form-panel">
