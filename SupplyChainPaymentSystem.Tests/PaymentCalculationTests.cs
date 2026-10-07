@@ -255,4 +255,23 @@ public class PaymentCalculationTests
         Assert.Equal(1000000m, row.DebtAmount);
     }
 
+    [Fact]
+    public void EfModel_DoesNotContainShadowForeignKeys()
+    {
+        var options = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<Indamin.Payment.Data.AppDbContext>()
+            .UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=ModelValidationOnly;Trusted_Connection=True;TrustServerCertificate=True")
+            .Options;
+
+        using var db = new Indamin.Payment.Data.AppDbContext(options);
+        var shadowForeignKeys = db.Model.GetEntityTypes()
+            .SelectMany(x => x.GetForeignKeys())
+            .SelectMany(x => x.Properties)
+            .Where(x => x.IsShadowProperty())
+            .Select(x => x.DeclaringType.ClrType.Name + "." + x.Name)
+            .Distinct()
+            .ToList();
+
+        Assert.Empty(shadowForeignKeys);
+    }
+
 }
