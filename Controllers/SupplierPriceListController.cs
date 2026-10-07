@@ -32,7 +32,7 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
                 x.SupplierParts.Count(p => p.IsActive)))
             .ToListAsync();
 
-        return View(rows, new SupplierPriceListIndexVm(rows, total, page, pageSize, q));
+        return View(new SupplierPriceListIndexVm(rows, total, page, pageSize, q));
     }
 
     [HttpGet]
