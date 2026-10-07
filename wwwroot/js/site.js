@@ -38,3 +38,73 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 
 document.addEventListener("DOMContentLoaded",()=>{document.querySelectorAll("[data-edit-toggle]").forEach(btn=>btn.addEventListener("click",()=>{const row=document.getElementById(btn.dataset.editToggle);if(!row)return;const open=row.classList.toggle("is-open");row.style.display=open?"table-row":"none";btn.textContent=open?"بستن ویرایش":"ویرایش";}));document.querySelectorAll(".edit-row").forEach(row=>row.style.display="none");});
+
+(function(){
+ const ones=["","یک","دو","سه","چهار","پنج","شش","هفت","هشت","نه","ده","یازده","دوازده","سیزده","چهارده","پانزده","شانزده","هفده","هجده","نوزده"];
+ const tens=["","","بیست","سی","چهل","پنجاه","شصت","هفتاد","هشتاد","نود"];
+ const hundreds=["","صد","دویست","سیصد","چهارصد","پانصد","ششصد","هفتصد","هشتصد","نهصد"];
+ const scales=["","هزار","میلیون","میلیارد","تریلیون","کوادریلیون","کوینتیلیون"];
+ function normalizeDigits(v){return String(v??"").replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/[٠-٩]/g,d=>String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));}
+ function tri(n){
+  const a=[];
+  if(n>=100)a.push(hundreds[Math.floor(n/100)]),n%=100;
+  if(n>=20)a.push(tens[Math.floor(n/10)]),n%=10;
+  if(n>0)a.push(ones[n]);
+  return a.join(" و ");
+ }
+ function words(n){
+  n=Math.floor(n);
+  if(n===0)return "صفر";
+  const parts=[];
+  let i=0;
+  while(n>0){
+   const part=n%1000;
+   if(part)parts.unshift(tri(part)+(scales[i]?" "+scales[i]:""));
+   n=Math.floor(n/1000);i++;
+  }
+  return parts.join(" و ");
+ }
+ function parseAmount(v){
+  let s=normalizeDigits(v).replace(/[٬,]/g,"").replace(/٫/g,".").replace(/\s+/g,"").replace(/[^0-9.]/g,"");
+  const dot=s.indexOf(".");
+  if(dot>=0)s=s.slice(0,dot+1)+s.slice(dot+1).replace(/\./g,"");
+  const n=Number(s);
+  return Number.isFinite(n)?n:null;
+ }
+ function formatAmount(v){
+  let s=normalizeDigits(v).replace(/[٬,]/g,"").replace(/٫/g,".").replace(/\s+/g,"").replace(/[^0-9.]/g,"");
+  if(!s)return "";
+  const dot=s.indexOf(".");
+  let integer=dot>=0?s.slice(0,dot):s;
+  let fraction=dot>=0?s.slice(dot+1).slice(0,2):"";
+  integer=integer.replace(/^0+(?=\d)/,"");
+  integer=integer.replace(/\B(?=(\d{3})+(?!\d))/g,",");
+  return integer+(dot>=0?"."+fraction:"");
+ }
+ function renderWords(input){
+  const target=input.parentElement?.querySelector("[data-money-words]");
+  if(!target)return;
+  const n=parseAmount(input.value);
+  if(n===null){target.textContent="مبلغ به حروف پس از ورود نمایش داده می‌شود.";return;}
+  const rounded=Math.round(n*100)/100;
+  const integer=Math.floor(Math.abs(rounded));
+  const fraction=Math.round((Math.abs(rounded)-integer)*100);
+  let text=(rounded<0?"منفی ":"")+words(integer);
+  if(fraction>0)text+=" و "+words(fraction)+" صدم";
+  target.textContent=text+" ریال";
+ }
+ document.addEventListener("DOMContentLoaded",()=>{
+  document.querySelectorAll("[data-money-input]").forEach(input=>{
+   input.value=formatAmount(input.value);
+   renderWords(input);
+   input.addEventListener("input",()=>{
+    input.value=formatAmount(input.value);
+    renderWords(input);
+   });
+   input.addEventListener("blur",()=>{
+    input.value=formatAmount(input.value);
+    renderWords(input);
+   });
+  });
+ });
+})();
