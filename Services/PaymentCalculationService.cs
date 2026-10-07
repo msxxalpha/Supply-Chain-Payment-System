@@ -372,7 +372,10 @@ public class PaymentCalculationService(AppDbContext db)
                 x.OriginalDebt,
                 x.ReceiptDate,
                 Math.Max(0, x.RemainingDebt - currentAllocation),
-                x.ContractSettlementDays);
+                x.ContractSettlementDays,
+                x.DebtCalculationMethod,
+                x.PriceListItemId,
+                x.AppliedUnitPrice);
         }).Where(x => x.RemainingDebt > 0 && x.SupplierId.HasValue).ToList();
     }
 
