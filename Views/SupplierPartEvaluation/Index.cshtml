@@ -59,14 +59,17 @@ else
                     <tr>
                         <td class="fw-bold">@m.Supplier?.Code - @m.Supplier?.Title</td>
                         <td>@m.Part?.Code - @m.Part?.Title</td>
+                        @{
+                            var parameterIndex = 0;
+                        }
                         @foreach (var p in Model.Parameters)
                         {
                             var mine = Model.MyScores.FirstOrDefault(x => x.SupplierPartId == m.Id && x.PaymentParameterId == p.Id);
                             var avgScores = Model.AllScores.Where(x => x.SupplierPartId == m.Id && x.PaymentParameterId == p.Id).Select(x => x.Score).ToList();
                             var average = avgScores.Count == 0 ? 1m : Math.Round(avgScores.Average(), 2);
                             <td class="score-cell">
-                                <input form="@formId" class="form-control score-select" type="number" min="1" max="@p.MaxScore" step="0.1" name="items[@p.Id].Score" value="@(mine?.Score.ToString("0.##") ?? "")" placeholder="امتیاز">
-                                <input form="@formId" type="hidden" name="items[@p.Id].ParameterId" value="@p.Id">
+                                <input form="@formId" class="form-control score-select" type="number" min="1" max="@p.MaxScore" step="0.1" name="items[@parameterIndex].Score" value="@(mine?.Score.ToString("0.##") ?? "")" placeholder="امتیاز">
+                                <input form="@formId" type="hidden" name="items[@parameterIndex].ParameterId" value="@p.Id">
                                 <small class="subtle d-block mt-1">میانگین: @average.ToString("0.##")</small>
                             </td>
                         }
