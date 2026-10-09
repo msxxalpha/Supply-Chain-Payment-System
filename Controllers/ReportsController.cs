@@ -45,7 +45,7 @@ public class ReportsController(FinancialReportingService reports, AppDbContext d
             Count = g.Count(),
             Seconds = g.Sum(s => s.LogoutAtUtc.HasValue
                 ? Math.Max(0, s.DurationSeconds)
-                : Math.Max(Math.Max(0, s.DurationSeconds), (int)Math.Min(int.MaxValue, (now - s.LoginAtUtc).TotalSeconds))),
+                : Math.Max(Math.Max(0, s.DurationSeconds), (int)Math.Min(int.MaxValue, Math.Max(0, (s.LastSeenAtUtc - s.LoginAtUtc).TotalSeconds)))),
             LastSeen = g.Max(s => s.LastSeenAtUtc),
             Active = g.Any(s => !s.LogoutAtUtc.HasValue)
         });
