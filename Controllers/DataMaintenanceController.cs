@@ -20,7 +20,13 @@ public class DataMaintenanceController(AppDbContext db) : Controller
             ClaimHistories = await db.SupplierClaimHistories.CountAsync(),
             AssessorScores = await db.SupplierPartAssessorEvaluations.CountAsync(),
             ActivitySessions = await db.UserActivitySessions.CountAsync(),
-            AuditLogs = await db.AuditLogs.CountAsync()
+            AuditLogs = await db.AuditLogs.CountAsync(),
+            Parts = await db.Parts.CountAsync(),
+            Suppliers = await db.Suppliers.CountAsync(),
+            SupplierParts = await db.SupplierParts.CountAsync(),
+            SupplierPartEvaluations = await db.SupplierPartEvaluations.CountAsync(),
+            SupplierPartAssessorEvaluations = await db.SupplierPartAssessorEvaluations.CountAsync(),
+            SupplierPriceListItems = await db.SupplierPriceListItems.CountAsync()
         };
         return View(vm);
     }
@@ -29,14 +35,17 @@ public class DataMaintenanceController(AppDbContext db) : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteSection(string? section, string? confirmation)
     {
-        if (!string.Equals(confirmation?.Trim(), ConfirmationPhrase, StringComparison.Ordinal))
+        var expectedConfirmation = string.Equals(section, "reset-test-data", StringComparison.Ordinal)
+            ? "پاک‌سازی کامل اطلاعات آزمایشی"
+            : ConfirmationPhrase;
+        if (!string.Equals(confirmation?.Trim(), expectedConfirmation, StringComparison.Ordinal))
         {
             TempData["Error"] = $"برای جلوگیری از حذف ناخواسته، عبارت «{ConfirmationPhrase}» را دقیقاً وارد کنید.";
             return RedirectToAction(nameof(Index));
         }
 
         if (string.IsNullOrWhiteSpace(section) ||
-            !new[] { "calculated-payments", "non-calculated-payments", "claim-history", "assessor-activity", "audit-logs" }.Contains(section, StringComparer.Ordinal))
+            !new[] { "calculated-payments", "non-calculated-payments", "claim-history", "assessor-activity", "audit-logs", "reset-test-data" }.Contains(section, StringComparer.Ordinal))
         {
             TempData["Error"] = "بخش انتخاب‌شده معتبر نیست؛ هیچ اطلاعاتی حذف نشد.";
             return RedirectToAction(nameof(Index));
@@ -69,9 +78,14 @@ public class DataMaintenanceController(AppDbContext db) : Controller
                     details.Add($"امتیازهای ارزیابان: {scoreCount:N0}");
                     details.Add($"سوابق نشست و فعالیت کاربران: {sessionCount:N0}");
                     break;
-                case "audit-logs":
+                    case "audit-logs":
                     deleted = await db.AuditLogs.ExecuteDeleteAsync();
                     details.Add("گزارش رویدادها و عملیات سیستم");
+                    break;
+                case "reset-test-data":
+                    deleted = await ResetTestDataAsync();
+                    description = "پاک‌سازی یکپارچه اطلاعات آزمایشی شامل کالاها، تامین‌کنندگان، ارتباط‌ها، ارزیابی‌ها و پرداخت‌های وابسته";
+                    details.Add(description);
                     break;
             }
 
@@ -87,42 +101,59 @@ public class DataMaintenanceController(AppDbContext db) : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    private async Task<int> DeletePaymentRunsAsync(PaymentRunType runType)
+    private async Task<int> ResetTestDataAsync()
     {
-        var runIds = await db.PaymentRuns
-            .Where(x => x.RunType == runType)
-            .Select(x => x.Id)
-            .ToListAsync();
-
-        if (runIds.Count == 0)
-            return 0;
-
         var deleted = 0;
 
-        // Remove dependent rows first to respect SQL Server foreign-key constraints.
+        // A full test reset also removes payment history that references the
+        // supplier/part master data, so production data starts without test records.
+        deleted += await DeletePaymentRunsAsync(PaymentRunType.Calculated);
+        deleted += await DeletePaymentRunsAsync(PaymentRunType.NonCalculated);
+
+        // Delete dependents before their principals to satisfy SQL Server FKs.
+        deleted += await db.SupplierClaimHistories.ExecuteDeleteAsync();
+        deleted += await db.SupplierPartAssessorEvaluations.ExecuteDeleteAsync();
+        deleted += await db.SupplierPartEvaluations.ExecuteDeleteAsync();
+        deleted += await db.SupplierPriceListItems.ExecuteDeleteAsync();
+        deleted += await db.SupplierParts.ExecuteDeleteAsync();
+        deleted += await db.SupplierActivities.ExecuteDeleteAsync();
+        deleted += await db.Parts.ExecuteDeleteAsync();
+        deleted += await db.Suppliers.ExecuteDeleteAsync();
+
+        return deleted;
+    }
+
+    private async Task<int> DeletePaymentRunsAsync(PaymentRunType runType)
+    {
+        var deleted = 0;
+
+        // Delete with SQL subqueries rather than loading all run IDs into memory.
         deleted += await db.PaymentInvoiceScores
-            .Where(x => runIds.Contains(x.Invoice!.PaymentRunId))
+            .Where(x => db.PaymentRunInvoices.Any(i =>
+                i.Id == x.PaymentRunInvoiceId &&
+                db.PaymentRuns.Any(r => r.Id == i.PaymentRunId && r.RunType == runType)))
             .ExecuteDeleteAsync();
         deleted += await db.PaymentRunInvoices
-            .Where(x => runIds.Contains(x.PaymentRunId))
+            .Where(x => db.PaymentRuns.Any(r => r.Id == x.PaymentRunId && r.RunType == runType))
             .ExecuteDeleteAsync();
         deleted += await db.PaymentRunSupplierSummaries
-            .Where(x => runIds.Contains(x.PaymentRunId))
+            .Where(x => db.PaymentRuns.Any(r => r.Id == x.PaymentRunId && r.RunType == runType))
             .ExecuteDeleteAsync();
         deleted += await db.PaymentRunParameterSnapshots
-            .Where(x => runIds.Contains(x.PaymentRunId))
+            .Where(x => db.PaymentRuns.Any(r => r.Id == x.PaymentRunId && r.RunType == runType))
             .ExecuteDeleteAsync();
         deleted += await db.PaymentRunSystemParameterSnapshots
-            .Where(x => runIds.Contains(x.PaymentRunId))
+            .Where(x => db.PaymentRuns.Any(r => r.Id == x.PaymentRunId && r.RunType == runType))
             .ExecuteDeleteAsync();
         deleted += await db.NonCalculatedPaymentLines
-            .Where(x => runIds.Contains(x.PaymentRunId))
+            .Where(x => db.PaymentRuns.Any(r => r.Id == x.PaymentRunId && r.RunType == runType))
             .ExecuteDeleteAsync();
         deleted += await db.SupplierClaimHistories
-            .Where(x => x.PaymentRunId.HasValue && runIds.Contains(x.PaymentRunId.Value))
+            .Where(x => x.PaymentRunId.HasValue &&
+                db.PaymentRuns.Any(r => r.Id == x.PaymentRunId.Value && r.RunType == runType))
             .ExecuteDeleteAsync();
         deleted += await db.PaymentRuns
-            .Where(x => runIds.Contains(x.Id))
+            .Where(x => x.RunType == runType)
             .ExecuteDeleteAsync();
 
         return deleted;
@@ -136,5 +167,11 @@ public class DataMaintenanceController(AppDbContext db) : Controller
         public int AssessorScores { get; set; }
         public int ActivitySessions { get; set; }
         public int AuditLogs { get; set; }
+        public int Parts { get; set; }
+        public int Suppliers { get; set; }
+        public int SupplierParts { get; set; }
+        public int SupplierPartEvaluations { get; set; }
+        public int SupplierPartAssessorEvaluations { get; set; }
+        public int SupplierPriceListItems { get; set; }
     }
 }
