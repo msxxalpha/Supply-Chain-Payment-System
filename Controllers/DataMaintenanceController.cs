@@ -40,7 +40,7 @@ public class DataMaintenanceController(AppDbContext db) : Controller
             : ConfirmationPhrase;
         if (!string.Equals(confirmation?.Trim(), expectedConfirmation, StringComparison.Ordinal))
         {
-            TempData["Error"] = $"برای جلوگیری از حذف ناخواسته، عبارت «{ConfirmationPhrase}» را دقیقاً وارد کنید.";
+            TempData["Error"] = $"برای جلوگیری از حذف ناخواسته، عبارت «{expectedConfirmation}» را دقیقاً وارد کنید.";
             return RedirectToAction(nameof(Index));
         }
 
@@ -78,14 +78,13 @@ public class DataMaintenanceController(AppDbContext db) : Controller
                     details.Add($"امتیازهای ارزیابان: {scoreCount:N0}");
                     details.Add($"سوابق نشست و فعالیت کاربران: {sessionCount:N0}");
                     break;
-                    case "audit-logs":
+                case "audit-logs":
                     deleted = await db.AuditLogs.ExecuteDeleteAsync();
                     details.Add("گزارش رویدادها و عملیات سیستم");
                     break;
                 case "reset-test-data":
                     deleted = await ResetTestDataAsync();
-                    description = "پاک‌سازی یکپارچه اطلاعات آزمایشی شامل کالاها، تامین‌کنندگان، ارتباط‌ها، ارزیابی‌ها و پرداخت‌های وابسته";
-                    details.Add(description);
+                    details.Add("پاک‌سازی یکپارچه اطلاعات آزمایشی شامل کالاها، تامین‌کنندگان، ارتباط‌ها، ارزیابی‌ها، فهرست بها و پرداخت‌های وابسته");
                     break;
             }
 
