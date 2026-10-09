@@ -10,6 +10,7 @@ public static class SecurityPermissions{
  public const string PaymentDelete="Permission:Payment.Delete";
  public const string ReportsView="Permission:Reports.View";
  public const string SupplierOverview="Permission:Reports.SupplierOverview";
+ public const string AssessorPerformance="Permission:Reports.AssessorPerformance";
  public const string SetupParameters="Permission:Setup.Parameters";
  public const string SetupSystemParameters="Permission:Setup.SystemParameters";
  public const string PaymentNonCalculated="Permission:Payment.NonCalculated";
@@ -19,7 +20,7 @@ public static class SecurityPermissions{
  public const string SetupEvaluations="Permission:Setup.Evaluations";
  public const string SetupLookups="Permission:Setup.Lookups"; public const string SetupQueries="Permission:Setup.Queries"; public const string SetupSupplierPriceList="Permission:Setup.SupplierPriceList"; public const string SupplierPartEvaluationView="Permission:SupplierPartEvaluation.View";
  public const string UsersManage="Permission:Users.Manage";
- public static readonly string[] AllCodes=[DashboardView[11..],PaymentCalculate[11..],PaymentHistory[11..],PaymentApprove[11..],PaymentOrderCreate[11..],PaymentOrderDownload[11..],PaymentDelete[11..],PaymentNonCalculated[11..],ReportsView[11..],SupplierOverview[11..],SetupParameters[11..],SetupSystemParameters[11..],SetupParts[11..],SetupSuppliers[11..],SetupMappings[11..],SetupEvaluations[11..],SetupLookups[11..],SetupQueries[11..],SetupSupplierPriceList[11..],SupplierPartEvaluationView[11..],UsersManage[11..]];
+ public static readonly string[] AllCodes=[DashboardView[11..],PaymentCalculate[11..],PaymentHistory[11..],PaymentApprove[11..],PaymentOrderCreate[11..],PaymentOrderDownload[11..],PaymentDelete[11..],PaymentNonCalculated[11..],ReportsView[11..],SupplierOverview[11..],AssessorPerformance[11..],SetupParameters[11..],SetupSystemParameters[11..],SetupParts[11..],SetupSuppliers[11..],SetupMappings[11..],SetupEvaluations[11..],SetupLookups[11..],SetupQueries[11..],SetupSupplierPriceList[11..],SupplierPartEvaluationView[11..],UsersManage[11..]];
  public static string SupplierPartParameterPermission(int parameterId)=>$"Permission:SupplierPartEvaluation.Parameter.{parameterId}";
  public record Definition(string Code,string Title,string GroupTitle,int SortOrder);
  public static readonly IReadOnlyList<Definition> Definitions=[
@@ -33,6 +34,7 @@ public static class SecurityPermissions{
   new("Payment.NonCalculated","پرداخت غیرمحاسباتی","پرداخت",16),
   new("Reports.View","داشبورد و گزارش‌های مالی","گزارش‌ها",20),
   new("Reports.SupplierOverview","مرور تامین‌کننده","گزارش‌ها",21),
+  new("Reports.AssessorPerformance","گزارش عملکرد ارزیابان قطعه–تامین‌کننده","گزارش‌ها",22),
   new("Setup.Parameters","مدیریت پارامترهای پرداخت","اطلاعات پایه",30),
   new("Setup.SystemParameters","مدیریت پارامترهای سیستم","اطلاعات پایه",31),
   new("Setup.Parts","مدیریت کالاها","اطلاعات پایه",32),
