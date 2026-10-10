@@ -160,6 +160,7 @@ BEGIN
   PaymentParameterId int NOT NULL,
   AssessorUserId int NOT NULL,
   Score decimal(8,2) NOT NULL,
+  IsDefault bit NOT NULL CONSTRAINT DF_SupplierPartAssessorEvaluations_IsDefault DEFAULT(0),
   CreatedAt datetime2 NOT NULL DEFAULT(sysutcdatetime()),
   UpdatedAt datetime2 NOT NULL DEFAULT(sysutcdatetime()),
   CONSTRAINT FK_SupplierPartAssessorEvaluations_SupplierPart FOREIGN KEY(SupplierPartId) REFERENCES dbo.SupplierParts(Id) ON DELETE CASCADE,
@@ -167,6 +168,8 @@ BEGIN
   CONSTRAINT FK_SupplierPartAssessorEvaluations_User FOREIGN KEY(AssessorUserId) REFERENCES dbo.AppUsers(Id) ON DELETE NO ACTION
  );
 END
+IF COL_LENGTH(N'dbo.SupplierPartAssessorEvaluations',N'IsDefault') IS NULL
+ ALTER TABLE dbo.SupplierPartAssessorEvaluations ADD IsDefault bit NOT NULL CONSTRAINT DF_SupplierPartAssessorEvaluations_IsDefault DEFAULT(0);
 IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'UX_SupplierPartAssessorEvaluations_Key' AND object_id=OBJECT_ID(N'dbo.SupplierPartAssessorEvaluations'))
  CREATE UNIQUE INDEX UX_SupplierPartAssessorEvaluations_Key ON dbo.SupplierPartAssessorEvaluations(SupplierPartId,PaymentParameterId,AssessorUserId);
 IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_SupplierPartAssessorEvaluations_User' AND object_id=OBJECT_ID(N'dbo.SupplierPartAssessorEvaluations'))
@@ -189,6 +192,46 @@ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_UserActivitySessions_Use
  CREATE INDEX IX_UserActivitySessions_UserLogin ON dbo.UserActivitySessions(UserId,LoginAtUtc DESC);
 """);
  }
+
+ public static async Task EnsureEvaluatorDefaultScoresAsync(AppDbContext db)
+ {
+  var adminId = await db.Users.Where(x=>x.IsAdmin).OrderBy(x=>x.Id).Select(x=>(int?)x.Id).FirstOrDefaultAsync();
+  if(!adminId.HasValue) return;
+  var parameters = await db.PaymentParameters.Where(x=>x.IsActive && x.Weight>0 && x.ScoringMethod==ParameterScoringMethod.Manual)
+   .OrderBy(x=>x.SortOrder).ThenBy(x=>x.Title).ToListAsync();
+  if(parameters.Count==0)return;
+  var parameterIds=parameters.Select(x=>x.Id).ToList();
+  var mappingIds=await db.SupplierParts.Where(x=>x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive).Select(x=>x.Id).ToListAsync();
+  if(mappingIds.Count==0)return;
+  var assessmentRows=await db.SupplierPartAssessorEvaluations
+   .Where(x=>mappingIds.Contains(x.SupplierPartId) && parameterIds.Contains(x.PaymentParameterId))
+   .Select(x=>new{x.SupplierPartId,x.PaymentParameterId,x.AssessorUserId,x.Score,x.IsDefault}).ToListAsync();
+  var realScores=assessmentRows.Where(x=>!x.IsDefault).GroupBy(x=>(x.SupplierPartId,x.PaymentParameterId))
+   .ToDictionary(g=>g.Key,g=>Math.Round(g.Average(x=>x.Score),2,MidpointRounding.AwayFromZero));
+  var adminDefaults=assessmentRows.Where(x=>x.IsDefault && x.AssessorUserId==adminId.Value)
+   .Select(x=>(x.SupplierPartId,x.PaymentParameterId)).ToHashSet();
+  foreach(var mappingId in mappingIds)
+  foreach(var parameter in parameters)
+  {
+   var key=(mappingId,parameter.Id);
+   if(!realScores.ContainsKey(key) && !adminDefaults.Contains(key))
+    db.SupplierPartAssessorEvaluations.Add(new SupplierPartAssessorEvaluation
+    {
+     SupplierPartId=mappingId,PaymentParameterId=parameter.Id,AssessorUserId=adminId.Value,
+     Score=1m,IsDefault=true,CreatedAt=DateTime.UtcNow,UpdatedAt=DateTime.UtcNow
+    });
+  }
+  var aggregates=await db.SupplierPartEvaluations.Where(x=>mappingIds.Contains(x.SupplierPartId) && parameterIds.Contains(x.PaymentParameterId)).ToListAsync();
+  var aggregateByKey=aggregates.ToDictionary(x=>(x.SupplierPartId,x.PaymentParameterId));
+  foreach(var mappingId in mappingIds)
+  foreach(var parameter in parameters)
+  {
+   var key=(mappingId,parameter.Id);var average=realScores.GetValueOrDefault(key,1m);
+   if(aggregateByKey.TryGetValue(key,out var aggregate)){aggregate.Score=average;aggregate.IsActive=true;aggregate.UpdatedAt=DateTime.UtcNow;}
+   else db.SupplierPartEvaluations.Add(new SupplierPartEvaluation{SupplierPartId=mappingId,PaymentParameterId=parameter.Id,Score=average,IsActive=true,UpdatedAt=DateTime.UtcNow});
+  }
+  await db.SaveChangesAsync();
+ }
  public static async Task SeedSecurityAsync(AppDbContext db){
   foreach(var d in SecurityPermissions.Definitions)
   {
@@ -198,7 +241,7 @@ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_UserActivitySessions_Use
   await db.SaveChangesAsync();
 
   var manualParameters=await db.PaymentParameters
-      .Where(x=>x.ScoringMethod==ParameterScoringMethod.Manual)
+      .Where(x=>x.IsActive && x.Weight>0 && x.ScoringMethod==ParameterScoringMethod.Manual)
       .OrderBy(x=>x.SortOrder).ThenBy(x=>x.Title)
       .ToListAsync();
 

@@ -1,0 +1,110 @@
+@model Indamin.Payment.Controllers.SupplierPartEvaluationController.EvaluatorDashboardVm
+@{
+    ViewData["Title"] = "داشبورد عملکرد ارزیاب";
+}
+<div class="dashboard-hero evaluator-hero">
+    <div class="hero-copy">
+        <div class="eyebrow">میز کار ارزیاب</div>
+        <h1>سلام، @Model.EvaluatorName</h1>
+        <p>وضعیت ارزیابی‌های شما، قطعه–تامین‌کننده‌های منتظر ارزیابی و پیشرفت هر پارامتر در یک نگاه.</p>
+        <div class="hero-actions">
+            <a class="btn btn-main btn-lg" href="/SupplierPartEvaluation">ورود به صفحه ارزیابی</a>
+        </div>
+    </div>
+    <div class="hero-visual"><div class="visual-ring ring-one"></div><div class="visual-ring ring-two"></div><div class="visual-core"><span class="core-bar h1"></span><span class="core-bar h2"></span><span class="core-bar h3"></span><span class="core-bar h4"></span></div></div>
+</div>
+
+<div class="payment-kpi-grid evaluator-kpis">
+    <div class="payment-kpi"><span>ارتباط‌های فعال</span><strong>@Model.TotalMappings.ToString("N0")</strong><small>قطعه–تامین‌کننده</small></div>
+    <div class="payment-kpi"><span>ارزیابی شروع‌شده</span><strong>@Model.AssessedMappings.ToString("N0")</strong><small>حداقل یک امتیاز ثبت کرده‌اید</small></div>
+    <div class="payment-kpi"><span>تکمیل‌شده توسط شما</span><strong>@Model.CompletedMappings.ToString("N0")</strong><small>همه پارامترهای مجاز ثبت شده‌اند</small></div>
+    <div class="payment-kpi"><span>در انتظار تکمیل</span><strong>@Model.PendingMappingCount.ToString("N0")</strong><small>@Model.CompletionPercent.ToString("0.#")٪ پیشرفت کل</small></div>
+</div>
+
+@if (Model.RequiredParameterCount == 0)
+{
+    <div class="alert alert-warning mt-3">در حال حاضر پارامتر پرداخت دستی، فعال و دارای وزن که برای حساب شما مجاز باشد وجود ندارد. از مدیر سامانه بخواهید پارامترهای موردنیاز را فعال و دسترسی آن‌ها را به نقش ارزیاب اختصاص دهد. پس از تغییر دسترسی، یک‌بار خارج شوید و دوباره وارد شوید.</div>
+}
+else
+{
+    <div class="form-panel mt-3">
+        <div class="panel-title"><div><h4>پیشرفت ارزیابی به تفکیک پارامتر</h4><span>تعداد ارتباط‌هایی که شما برای هر پارامتر امتیاز واقعی ثبت کرده‌اید</span></div><span class="validation-chip validation-ok">@Model.CompletedScores.ToString("N0") از @Model.ExpectedScores.ToString("N0") امتیاز</span></div>
+        <div class="evaluator-chart">
+            @foreach (var p in Model.ParameterProgress)
+            {
+                var barWidth = Math.Clamp((int)Math.Round(p.CompletionPercent), 0, 100);
+                <div class="evaluator-chart-row">
+                    <div class="evaluator-chart-label"><strong>@p.ParameterTitle</strong><span>وزن @p.Weight.ToString("0.##")٪ · میانگین امتیاز شما: @(p.AverageScore?.ToString("0.##") ?? "—")</span></div>
+                    <div class="evaluator-chart-track" role="img" aria-label="@p.ParameterTitle: @p.CompletionPercent.ToString("0.#") درصد تکمیل">
+                        <div class="evaluator-chart-bar" style="width:@barWidth%"></div>
+                    </div>
+                    <div class="evaluator-chart-value">@p.EvaluatedMappings.ToString("N0") / @p.TotalMappings.ToString("N0") <small>(@p.CompletionPercent.ToString("0.#")٪)</small></div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="table-panel mt-3">
+        <div class="panel-title"><div><h4>قطعه–تامین‌کننده‌های نیازمند ارزیابی</h4><span>موارد جدید یا مواردی که هنوز همه پارامترهای مجازشان تکمیل نشده است</span></div><a class="btn btn-outline-primary" href="/SupplierPartEvaluation">مشاهده همه</a></div>
+        <div class="table-responsive">
+            <table class="table modern-table align-middle">
+                <thead><tr><th>تامین‌کننده</th><th>قطعه</th><th>پارامترهای باقی‌مانده</th><th>عملیات</th></tr></thead>
+                <tbody>
+                @foreach (var item in Model.PendingItems)
+                {
+                    <tr>
+                        <td><strong>@item.SupplierCode</strong> — @item.SupplierTitle</td>
+                        <td>@item.PartCode — @item.PartTitle</td>
+                        <td><span class="badge text-bg-light">@item.MissingParameterCount مورد</span><div class="subtle mt-1">@item.MissingParameterTitles</div></td>
+                        <td><a class="btn btn-sm btn-main" href="@Url.Action("Index", new { q = item.PartCode })">شروع / تکمیل</a></td>
+                    </tr>
+                }
+                @if (Model.PendingMappingCount == 0)
+                {
+                    <tr><td colspan="4" class="text-center py-4"><strong>عالی است؛ همه ارتباط‌های فعال با پارامترهای در دسترس شما ارزیابی شده‌اند.</strong></td></tr>
+                }
+                else if (Model.PendingItems.Count == 0)
+                {
+                    <tr><td colspan="4" class="text-center text-muted py-4">موردی برای نمایش در این بخش وجود ندارد.</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        @if (Model.PendingMappingCount > Model.PendingItems.Count)
+        {
+            <div class="p-3 subtle">در مجموع @Model.PendingMappingCount.ToString("N0") ارتباط نیازمند تکمیل است؛ ۱۲ مورد آخر در این جدول نشان داده شده‌اند.</div>
+        }
+    </div>
+}
+
+<div class="table-panel mt-3">
+    <div class="panel-title"><div><h4>آخرین فعالیت‌های من</h4><span>آخرین امتیازهای واقعی ثبت یا اصلاح‌شده توسط شما</span></div></div>
+    <div class="table-responsive">
+        <table class="table modern-table align-middle">
+            <thead><tr><th>تامین‌کننده</th><th>قطعه</th><th>پارامتر</th><th>امتیاز</th><th>آخرین ثبت</th></tr></thead>
+            <tbody>
+            @foreach (var item in Model.RecentScores)
+            {
+                <tr><td>@item.SupplierTitle</td><td>@item.PartTitle</td><td>@item.ParameterTitle</td><td><strong>@item.Score.ToString("0.##")</strong></td><td>@item.UpdatedAtJalali</td></tr>
+            }
+            @if (Model.RecentScores.Count == 0)
+            {
+                <tr><td colspan="5" class="text-center text-muted py-4">هنوز ارزیابی واقعی از طرف شما ثبت نشده است. موارد منتظر ارزیابی از جدول بالا در دسترس هستند.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.evaluator-hero{margin-bottom:1rem}
+.evaluator-kpis{margin-top:1rem}
+.evaluator-chart{display:grid;gap:1rem;padding:.5rem 0}
+.evaluator-chart-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(120px,2fr) minmax(120px,.7fr);align-items:center;gap:1rem}
+.evaluator-chart-label{display:flex;flex-direction:column;gap:.25rem}
+.evaluator-chart-label span,.evaluator-chart-value small{font-size:.8rem;color:var(--muted,#64748b)}
+.evaluator-chart-track{height:14px;overflow:hidden;border-radius:999px;background:#e9eef3}
+.evaluator-chart-bar{height:100%;border-radius:999px;background:linear-gradient(90deg,#2d7fb3,#56a6c9);min-width:0}
+.evaluator-chart-value{font-variant-numeric:tabular-nums;text-align:left;white-space:nowrap}
+@media(max-width:760px){.evaluator-chart-row{grid-template-columns:1fr auto;gap:.5rem}.evaluator-chart-track{grid-column:1/-1;grid-row:2}.evaluator-chart-value{grid-column:2;grid-row:1}}
+</style>

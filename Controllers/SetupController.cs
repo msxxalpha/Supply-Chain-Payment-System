@@ -16,13 +16,51 @@ namespace Indamin.Payment.Controllers;
   var rows=await db.SystemParameters.Where(x=>map.Keys.Contains(x.Code)).ToListAsync();foreach(var x in rows){x.Value=map[x.Code];x.UpdatedAt=DateTime.UtcNow;}await db.SaveChangesAsync();await Log("UPDATE","SystemParameter","ALL","پارامترهای سیستم پرداخت به‌روزرسانی شد.");TempData["Result"]="پارامترهای سیستم با موفقیت ذخیره شد.";return RedirectToAction(nameof(SystemParameters));}
 
  [Authorize(Policy=SecurityPermissions.SetupParameters)]
- [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> AddParameter(string code,string title,PaymentParameterType type,decimal weight,string scoringGuide,ParameterScoringMethod? method=null,int sortOrder=1){
-  var scoringMethod=method ?? ParameterScoringMethod.Manual;code=code?.Trim()??"";title=title?.Trim()??"";if(code==""||title==""||weight<0||weight>100)TempData["Error"]="اطلاعات پارامتر نامعتبر است.";else if(await db.PaymentParameters.AnyAsync(x=>x.Code==code))TempData["Error"]="کد پارامتر تکراری است.";else{db.PaymentParameters.Add(new PaymentParameter{Code=code,Title=title,Type=type,Weight=weight,MaxScore=5,ScoringGuide=scoringGuide?.Trim()??"",ScoringMethod=scoringMethod,SortOrder=Math.Max(1,sortOrder)});await db.SaveChangesAsync();await Log("CREATE","PaymentParameter",code,title);TempData["Result"]="پارامتر ایجاد شد.";}return RedirectToAction(nameof(Parameters));}
+ [HttpPost][ValidateAntiForgeryToken]
+  public async Task<IActionResult> AddParameter(string code,string title,PaymentParameterType type,decimal weight,string scoringGuide,ParameterScoringMethod? method=null,int sortOrder=1)
+  {
+   var scoringMethod=method ?? ParameterScoringMethod.Manual;code=code?.Trim()??"";title=title?.Trim()??"";
+   if(code==""||title==""||weight<0||weight>100) TempData["Error"]="اطلاعات پارامتر نامعتبر است.";
+   else if(await db.PaymentParameters.AnyAsync(x=>x.Code==code)) TempData["Error"]="کد پارامتر تکراری است.";
+   else
+   {
+    var parameter=new PaymentParameter{Code=code,Title=title,Type=type,Weight=weight,MaxScore=5,ScoringGuide=scoringGuide?.Trim()??"",ScoringMethod=scoringMethod,SortOrder=Math.Max(1,sortOrder),IsActive=true};
+    db.PaymentParameters.Add(parameter);await db.SaveChangesAsync();
+    if(parameter.IsActive && parameter.Weight>0 && parameter.ScoringMethod==ParameterScoringMethod.Manual)
+    {
+     await EnsureEvaluatorParameterPermissionAsync(parameter);
+     await EnsureDefaultEvaluationsAsync();
+    }
+    await Log("CREATE","PaymentParameter",code,title);
+    TempData["Result"]="پارامتر ایجاد شد؛ برای پارامتر دستی و دارای وزن، مقدار پایه ۱ در ارتباط‌های فعال ثبت شد.";
+   }
+   return RedirectToAction(nameof(Parameters));
+  }
  [Authorize(Policy=SecurityPermissions.SetupParameters)]
- [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> EditParameter(int id,string code,string title,PaymentParameterType type,decimal weight,string scoringGuide,ParameterScoringMethod method,int sortOrder,bool isActive=true){
-  var p=await db.PaymentParameters.FindAsync(id);if(p==null)return NotFound();code=code?.Trim()??"";title=title?.Trim()??"";if(code==""||title==""||weight<0||weight>100)TempData["Error"]="اطلاعات پارامتر نامعتبر است.";else if(await db.PaymentParameters.AnyAsync(x=>x.Id!=id&&x.Code==code))TempData["Error"]="کد پارامتر تکراری است.";else{p.Code=code;p.Title=title;p.Type=type;p.Weight=weight;p.ScoringGuide=scoringGuide?.Trim()??"";p.ScoringMethod=method;p.SortOrder=Math.Max(1,sortOrder);p.IsActive=isActive;await db.SaveChangesAsync();await Log("UPDATE","PaymentParameter",id.ToString(),title);TempData["Result"]="پارامتر به‌روزرسانی شد.";}return RedirectToAction(nameof(Parameters));}
+ [HttpPost][ValidateAntiForgeryToken]
+  public async Task<IActionResult> EditParameter(int id,string code,string title,PaymentParameterType type,decimal weight,string scoringGuide,ParameterScoringMethod method,int sortOrder,bool isActive=false)
+  {
+   var p=await db.PaymentParameters.FindAsync(id);if(p==null)return NotFound();code=code?.Trim()??"";title=title?.Trim()??"";
+   if(code==""||title==""||weight<0||weight>100) TempData["Error"]="اطلاعات پارامتر نامعتبر است.";
+   else if(await db.PaymentParameters.AnyAsync(x=>x.Id!=id&&x.Code==code)) TempData["Error"]="کد پارامتر تکراری است.";
+   else
+   {
+    p.Code=code;p.Title=title;p.Type=type;p.Weight=weight;p.ScoringGuide=scoringGuide?.Trim()??"";
+    p.ScoringMethod=method;p.SortOrder=Math.Max(1,sortOrder);p.IsActive=isActive;
+    await db.SaveChangesAsync();
+    if(p.IsActive&&p.Weight>0&&p.ScoringMethod==ParameterScoringMethod.Manual){await EnsureEvaluatorParameterPermissionAsync(p);await EnsureDefaultEvaluationsAsync();}
+    await Log("UPDATE","PaymentParameter",id.ToString(),title);TempData["Result"]="پارامتر به‌روزرسانی شد.";
+   }
+   return RedirectToAction(nameof(Parameters));
+  }
  [Authorize(Policy=SecurityPermissions.SetupParameters)]
- [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> ToggleParameter(int id){var p=await db.PaymentParameters.FindAsync(id);if(p==null)return NotFound();p.IsActive=!p.IsActive;await db.SaveChangesAsync();await Log("TOGGLE","PaymentParameter",id.ToString(),p.IsActive?"فعال":"غیرفعال");TempData["Result"]="وضعیت پارامتر تغییر کرد.";return RedirectToAction(nameof(Parameters));}
+ [HttpPost][ValidateAntiForgeryToken]
+  public async Task<IActionResult> ToggleParameter(int id)
+  {
+   var p=await db.PaymentParameters.FindAsync(id);if(p==null)return NotFound();p.IsActive=!p.IsActive;await db.SaveChangesAsync();
+   if(p.IsActive&&p.Weight>0&&p.ScoringMethod==ParameterScoringMethod.Manual){await EnsureEvaluatorParameterPermissionAsync(p);await EnsureDefaultEvaluationsAsync();}
+   await Log("TOGGLE","PaymentParameter",id.ToString(),p.IsActive?"فعال":"غیرفعال");TempData["Result"]="وضعیت پارامتر تغییر کرد.";return RedirectToAction(nameof(Parameters));
+  }
 
  [Authorize(Policy=SecurityPermissions.SetupLookups)]
  public async Task<IActionResult> Lookups(string group="PART_TYPE",string tab="lookup"){var all=await db.LookupValues.OrderBy(x=>x.GroupCode).ThenBy(x=>x.SortOrder).ThenBy(x=>x.Title).ToListAsync();var groups=all.Select(x=>x.GroupCode.Trim().ToUpperInvariant()).Distinct().OrderBy(x=>x).ToList();if(groups.Count==0)group="PART_TYPE";else{group=group.Trim().ToUpperInvariant();if(!groups.Contains(group))group=groups[0];}var rows=groups.ToDictionary(g=>g,g=>all.Where(x=>x.GroupCode.Trim().ToUpperInvariant()==g).ToList());var company=await db.CompanySettings.SingleOrDefaultAsync(x=>x.Id==1)??new CompanySettings();return View(new LookupVm(rows,groups,group,tab,company));}
@@ -84,11 +122,11 @@ namespace Indamin.Payment.Controllers;
  [Authorize(Policy=SecurityPermissions.SetupMappings)]
  public async Task<IActionResult> Mappings(string? q,int page=1,int pageSize=25){pageSize=NormalizePageSize(pageSize);page=Math.Max(1,page);var query=db.SupplierParts.Include(x=>x.Supplier).Include(x=>x.Part).AsQueryable();q=(q??"").Trim();if(q!="")query=query.Where(x=>x.Supplier!.Code.Contains(q)||x.Supplier.Title.Contains(q)||x.Part!.Code.Contains(q)||x.Part.Title.Contains(q));var total=await query.CountAsync();var rows=await query.OrderBy(x=>x.Supplier!.Title).ThenBy(x=>x.Part!.Title).Skip((page-1)*pageSize).Take(pageSize).ToListAsync();var pagePairs=rows.Select(x=>(x.PartId,x.SupplierId)).ToHashSet();var lockedPairs=await db.PaymentRunInvoices.Where(x=>!x.PaymentRun!.IsDeleted&&(x.PaymentRun.Status==PaymentRunStatus.Approved||x.PaymentRun.Status==PaymentRunStatus.PaymentOrdered)&&x.PartId.HasValue&&x.SupplierId.HasValue).Select(x=>new{x.PartId,x.SupplierId}).ToListAsync();var lockedIds=rows.Where(m=>lockedPairs.Any(x=>x.PartId==m.PartId&&x.SupplierId==m.SupplierId)).Select(x=>x.Id).ToHashSet();return View(new MappingsVm(rows,await db.Suppliers.Where(x=>x.IsActive).OrderBy(x=>x.Title).ToListAsync(),await db.Parts.Where(x=>x.IsActive).OrderBy(x=>x.Title).ToListAsync(),lockedIds,total,page,pageSize,q));}
  [Authorize(Policy=SecurityPermissions.SetupMappings)]
- [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> SaveMapping(int? id,int supplierId,int partId,decimal supplyCapacity,int contractSettlementDays,bool isActive=true){if(supplyCapacity<0||contractSettlementDays<=0)TempData["Error"]="ظرفیت و مهلت قراردادی نامعتبر است.";else if(await db.SupplierParts.AnyAsync(x=>x.Id!=id&&x.SupplierId==supplierId&&x.PartId==partId))TempData["Error"]="این ارتباط قبلاً تعریف شده است.";else{var m=id.HasValue?await db.SupplierParts.FindAsync(id):null;if(m==null){m=new SupplierPart{SupplierId=supplierId,PartId=partId};db.SupplierParts.Add(m);}else if(await db.PaymentRunInvoices.AnyAsync(x=>!x.PaymentRun!.IsDeleted&&(x.PaymentRun.Status==PaymentRunStatus.Approved||x.PaymentRun.Status==PaymentRunStatus.PaymentOrdered)&&x.PartId==m.PartId&&x.SupplierId==m.SupplierId)){if(m.SupplierId!=supplierId||m.PartId!=partId){TempData["Error"]="این ارتباط در محاسبه تاییدشده استفاده شده و تامین‌کننده/کالا قابل تغییر نیست؛ فقط وضعیت فعال بودن قابل تغییر است.";}else{m.IsActive=isActive;await db.SaveChangesAsync();TempData["Result"]="این ارتباط قبلاً در محاسبه تاییدشده استفاده شده؛ فقط وضعیت فعال/غیرفعال تغییر کرد.";}return RedirectToAction(nameof(Mappings));}m.SupplierId=supplierId;m.PartId=partId;m.SupplyCapacity=supplyCapacity;m.ContractSettlementDays=contractSettlementDays;m.IsActive=isActive;await db.SaveChangesAsync();await EnsureDefaultEvaluationsAsync(m.Id);TempData["Result"]="ارتباط قطعه–تامین‌کننده ذخیره شد.";}return RedirectToAction(nameof(Mappings));}
+ [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> SaveMapping(int? id,int supplierId,int partId,decimal supplyCapacity,int contractSettlementDays,bool isActive=true){if(supplyCapacity<0||contractSettlementDays<=0)TempData["Error"]="ظرفیت و مهلت قراردادی نامعتبر است.";else if(await db.SupplierParts.AnyAsync(x=>x.Id!=id&&x.SupplierId==supplierId&&x.PartId==partId))TempData["Error"]="این ارتباط قبلاً تعریف شده است.";else{var m=id.HasValue?await db.SupplierParts.FindAsync(id):null;if(m==null){m=new SupplierPart{SupplierId=supplierId,PartId=partId};db.SupplierParts.Add(m);}else if(await db.PaymentRunInvoices.AnyAsync(x=>!x.PaymentRun!.IsDeleted&&(x.PaymentRun.Status==PaymentRunStatus.Approved||x.PaymentRun.Status==PaymentRunStatus.PaymentOrdered)&&x.PartId==m.PartId&&x.SupplierId==m.SupplierId)){if(m.SupplierId!=supplierId||m.PartId!=partId){TempData["Error"]="این ارتباط در محاسبه تاییدشده استفاده شده و تامین‌کننده/کالا قابل تغییر نیست؛ فقط وضعیت فعال بودن قابل تغییر است.";}else{m.IsActive=isActive;await db.SaveChangesAsync();if(m.IsActive)await EnsureDefaultEvaluationsAsync(m.Id);TempData["Result"]="این ارتباط قبلاً در محاسبه تاییدشده استفاده شده؛ فقط وضعیت فعال/غیرفعال تغییر کرد.";}return RedirectToAction(nameof(Mappings));}m.SupplierId=supplierId;m.PartId=partId;m.SupplyCapacity=supplyCapacity;m.ContractSettlementDays=contractSettlementDays;m.IsActive=isActive;await db.SaveChangesAsync();await EnsureDefaultEvaluationsAsync(m.Id);TempData["Result"]="ارتباط قطعه–تامین‌کننده ذخیره شد.";}return RedirectToAction(nameof(Mappings));}
  [Authorize(Policy=SecurityPermissions.SetupMappings)]
  [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> DeleteMapping(int id){var m=await db.SupplierParts.FindAsync(id);if(m==null)return NotFound();var used=await db.PaymentRunInvoices.AnyAsync(x=>!x.PaymentRun!.IsDeleted&&(x.PaymentRun.Status==PaymentRunStatus.Approved||x.PaymentRun.Status==PaymentRunStatus.PaymentOrdered)&&x.PartId==m.PartId&&x.SupplierId==m.SupplierId);if(used){m.IsActive=false;await db.SaveChangesAsync();TempData["Error"]="این ارتباط در محاسبه تاییدشده استفاده شده و قابل حذف نیست؛ فقط غیرفعال شد.";}else{db.SupplierParts.Remove(m);await db.SaveChangesAsync();TempData["Result"]="ارتباط حذف شد.";}return RedirectToAction(nameof(Mappings));}
  [Authorize(Policy=SecurityPermissions.SetupMappings)]
- [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> ImportMappings(IFormFile file){if(file==null||file.Length==0){TempData["Error"]="فایل Excel انتخاب نشده است.";return RedirectToAction(nameof(Mappings));}var suppliers=await db.Suppliers.ToDictionaryAsync(x=>N(x.Code),x=>x.Id);var parts=await db.Parts.ToDictionaryAsync(x=>N(x.Code),x=>x.Id);List<string> errors;List<SupplierPartImportRow> rows;try{rows=excel.ReadSupplierParts(file.OpenReadStream(),suppliers,parts,out errors);}catch{TempData["Error"]="خواندن فایل Excel ارتباط کالا و تامین‌کننده ناموفق بود.";return RedirectToAction(nameof(Mappings));}var seen=new HashSet<string>();var existing=await db.SupplierParts.ToDictionaryAsync(x=>$"{x.SupplierId}:{x.PartId}");var affected=0;foreach(var x in rows){var key=$"{x.SupplierId}:{x.PartId}";if(!seen.Add(key)){errors.Add($"سطر {x.RowNumber}: ارتباط تکراری تامین‌کننده و کالا در فایل.");continue;}if(existing.TryGetValue(key,out var m)){m.SupplyCapacity=x.SupplyCapacity;m.ContractSettlementDays=x.ContractSettlementDays;m.IsActive=x.IsActive;affected++;}else{db.SupplierParts.Add(new SupplierPart{SupplierId=x.SupplierId,PartId=x.PartId,SupplyCapacity=x.SupplyCapacity,ContractSettlementDays=x.ContractSettlementDays,IsActive=x.IsActive});affected++;}}await db.SaveChangesAsync();foreach(var x in rows){var m=await db.SupplierParts.SingleOrDefaultAsync(z=>z.SupplierId==x.SupplierId&&z.PartId==x.PartId);if(m!=null)await EnsureDefaultEvaluationsAsync(m.Id);}TempData["Result"]=$"{affected} ارتباط وارد/به‌روزرسانی شد."+(errors.Count>0?$" {errors.Count} خطا داشت.":"");return RedirectToAction(nameof(Mappings));}
+ [HttpPost][ValidateAntiForgeryToken]public async Task<IActionResult> ImportMappings(IFormFile file){if(file==null||file.Length==0){TempData["Error"]="فایل Excel انتخاب نشده است.";return RedirectToAction(nameof(Mappings));}var suppliers=await db.Suppliers.ToDictionaryAsync(x=>N(x.Code),x=>x.Id);var parts=await db.Parts.ToDictionaryAsync(x=>N(x.Code),x=>x.Id);List<string> errors;List<SupplierPartImportRow> rows;try{rows=excel.ReadSupplierParts(file.OpenReadStream(),suppliers,parts,out errors);}catch{TempData["Error"]="خواندن فایل Excel ارتباط کالا و تامین‌کننده ناموفق بود.";return RedirectToAction(nameof(Mappings));}var seen=new HashSet<string>();var existing=await db.SupplierParts.ToDictionaryAsync(x=>$"{x.SupplierId}:{x.PartId}");var affected=0;foreach(var x in rows){var key=$"{x.SupplierId}:{x.PartId}";if(!seen.Add(key)){errors.Add($"سطر {x.RowNumber}: ارتباط تکراری تامین‌کننده و کالا در فایل.");continue;}if(existing.TryGetValue(key,out var m)){m.SupplyCapacity=x.SupplyCapacity;m.ContractSettlementDays=x.ContractSettlementDays;m.IsActive=x.IsActive;affected++;}else{db.SupplierParts.Add(new SupplierPart{SupplierId=x.SupplierId,PartId=x.PartId,SupplyCapacity=x.SupplyCapacity,ContractSettlementDays=x.ContractSettlementDays,IsActive=x.IsActive});affected++;}}await db.SaveChangesAsync();await EnsureDefaultEvaluationsAsync();TempData["Result"]=$"{affected} ارتباط وارد/به‌روزرسانی شد."+(errors.Count>0?$" {errors.Count} خطا داشت.":"");return RedirectToAction(nameof(Mappings));}
  [Authorize(Policy=SecurityPermissions.SetupMappings)]
  public async Task<IActionResult> ExportMappings(){var x=await db.SupplierParts.Include(m=>m.Supplier).Include(m=>m.Part).OrderBy(m=>m.Supplier!.Code).ThenBy(m=>m.Part!.Code).ToListAsync();return File(excel.SupplierParts(x),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","supplier-part-mappings.xlsx");}
 
@@ -100,8 +138,8 @@ namespace Indamin.Payment.Controllers;
   if(q!="")query=query.Where(x=>x.Supplier!.Code.Contains(q)||x.Supplier.Title.Contains(q)||x.Part!.Code.Contains(q)||x.Part.Title.Contains(q));
   var total=await query.CountAsync();
   var maps=await query.OrderBy(x=>x.Supplier!.Title).ThenBy(x=>x.Part!.Title).Skip((page-1)*pageSize).Take(pageSize).ToListAsync();
-  var parameters=await db.PaymentParameters.Where(x=>x.IsActive&&x.ScoringMethod==ParameterScoringMethod.Manual).OrderBy(x=>x.SortOrder).ThenBy(x=>x.Title).ToListAsync();
-  foreach(var m in maps)await EnsureDefaultEvaluationsAsync(m.Id);
+  var parameters=await db.PaymentParameters.Where(x=>x.IsActive&&x.Weight>0&&x.ScoringMethod==ParameterScoringMethod.Manual).OrderBy(x=>x.SortOrder).ThenBy(x=>x.Title).ToListAsync();
+  await EnsureDefaultEvaluationsAsync();
   await RefreshEvaluationAggregatesAsync(maps.Select(x=>x.Id),parameters);
   var ids=maps.Select(x=>x.Id).ToHashSet();
   var scores=await db.SupplierPartEvaluations.AsNoTracking().Where(x=>ids.Contains(x.SupplierPartId)).ToListAsync();
@@ -113,12 +151,12 @@ namespace Indamin.Payment.Controllers;
  public async Task<IActionResult> EvaluationDetails(int supplierPartId,int parameterId)
  {
   var mapping=await db.SupplierParts.AsNoTracking().Include(x=>x.Supplier).Include(x=>x.Part).SingleOrDefaultAsync(x=>x.Id==supplierPartId);
-  var parameter=await db.PaymentParameters.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==parameterId&&x.IsActive&&x.ScoringMethod==ParameterScoringMethod.Manual);
+  var parameter=await db.PaymentParameters.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==parameterId&&x.IsActive&&x.Weight>0&&x.ScoringMethod==ParameterScoringMethod.Manual);
   if(mapping==null||parameter==null)return NotFound();
 
   var scores=await db.SupplierPartAssessorEvaluations.AsNoTracking()
       .Include(x=>x.AssessorUser)
-      .Where(x=>x.SupplierPartId==supplierPartId&&x.PaymentParameterId==parameterId)
+      .Where(x=>x.SupplierPartId==supplierPartId&&x.PaymentParameterId==parameterId&&!x.IsDefault)
       .OrderByDescending(x=>x.UpdatedAt)
       .ThenBy(x=>x.AssessorUser!.DisplayName)
       .Select(x=>new
@@ -162,9 +200,9 @@ namespace Indamin.Payment.Controllers;
  public async Task<IActionResult> ExportEvaluations()
  {
   var activeMaps=await db.SupplierParts.Where(x=>x.IsActive).Select(x=>x.Id).ToListAsync();
-  foreach(var id in activeMaps)await EnsureDefaultEvaluationsAsync(id);
+  await EnsureDefaultEvaluationsAsync();
   var maps=await db.SupplierParts.Include(x=>x.Supplier).Include(x=>x.Part).OrderBy(x=>x.Supplier!.Title).ThenBy(x=>x.Part!.Title).ToListAsync();
-  var ps=await db.PaymentParameters.Where(x=>x.IsActive&&x.ScoringMethod==ParameterScoringMethod.Manual).OrderBy(x=>x.SortOrder).ToListAsync();
+  var ps=await db.PaymentParameters.Where(x=>x.IsActive&&x.Weight>0&&x.ScoringMethod==ParameterScoringMethod.Manual).OrderBy(x=>x.SortOrder).ToListAsync();
   await RefreshEvaluationAggregatesAsync(activeMaps,ps);
   var scores=await db.SupplierPartEvaluations.AsNoTracking().ToListAsync();
   return File(excel.SupplierPartEvaluations(maps,ps,scores),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","supplier-part-evaluations.xlsx");
@@ -177,7 +215,7 @@ namespace Indamin.Payment.Controllers;
   if(mapIds.Count==0||paramIds.Count==0)return;
 
   var averages=await db.SupplierPartAssessorEvaluations.AsNoTracking()
-      .Where(x=>mapIds.Contains(x.SupplierPartId)&&paramIds.Contains(x.PaymentParameterId))
+      .Where(x=>mapIds.Contains(x.SupplierPartId)&&paramIds.Contains(x.PaymentParameterId)&&!x.IsDefault)
       .GroupBy(x=>new{x.SupplierPartId,x.PaymentParameterId})
       .Select(g=>new{g.Key.SupplierPartId,g.Key.PaymentParameterId,Average=g.Average(x=>x.Score)})
       .ToDictionaryAsync(x=>(x.SupplierPartId,x.PaymentParameterId),x=>Math.Round(x.Average,2,MidpointRounding.AwayFromZero));
@@ -208,12 +246,55 @@ namespace Indamin.Payment.Controllers;
   await db.SaveChangesAsync();
  }
 
- async Task EnsureDefaultEvaluationsAsync(int supplierPartId)
+ async Task EnsureEvaluatorParameterPermissionAsync(PaymentParameter parameter)
  {
-  var ps=await db.PaymentParameters.Where(x=>x.IsActive&&x.ScoringMethod==ParameterScoringMethod.Manual).Select(x=>x.Id).ToListAsync();
-  var existing=await db.SupplierPartEvaluations.Where(x=>x.SupplierPartId==supplierPartId).Select(x=>x.PaymentParameterId).ToListAsync();
-  var missing=ps.Except(existing).Select(id=>new SupplierPartEvaluation{SupplierPartId=supplierPartId,PaymentParameterId=id,Score=1m,IsActive=true}).ToList();
-  if(missing.Count>0){db.SupplierPartEvaluations.AddRange(missing);await db.SaveChangesAsync();}
+  if(parameter.ScoringMethod!=ParameterScoringMethod.Manual || parameter.Weight<=0)return;
+  var code=$"SupplierPartEvaluation.Parameter.{parameter.Id}";
+  var permission=await db.Permissions.SingleOrDefaultAsync(x=>x.Code==code);
+  if(permission==null)
+  {
+   permission=new AppPermission{Code=code,Title=parameter.Title,GroupTitle="ارزیابی قطعه–تامین‌کننده",SortOrder=60+parameter.SortOrder};
+   db.Permissions.Add(permission);await db.SaveChangesAsync();
+  }
+  var role=await db.Roles.SingleOrDefaultAsync(x=>x.Code=="SUPPLIER_PART_ASSESSOR" && x.IsActive);
+  if(role!=null&&!await db.RolePermissions.AnyAsync(x=>x.RoleId==role.Id&&x.PermissionId==permission.Id))
+  {
+   db.RolePermissions.Add(new AppRolePermission{RoleId=role.Id,PermissionId=permission.Id});await db.SaveChangesAsync();
+  }
+ }
+
+ async Task EnsureDefaultEvaluationsAsync(int? supplierPartId=null)
+ {
+  var parameters=await db.PaymentParameters.Where(x=>x.IsActive&&x.Weight>0&&x.ScoringMethod==ParameterScoringMethod.Manual)
+   .OrderBy(x=>x.SortOrder).ThenBy(x=>x.Title).ToListAsync();
+  if(parameters.Count==0)return;
+  var mappingQuery=db.SupplierParts.Where(x=>x.IsActive&&x.Supplier!.IsActive&&x.Part!.IsActive);
+  if(supplierPartId.HasValue)mappingQuery=mappingQuery.Where(x=>x.Id==supplierPartId.Value);
+  var mapIds=await mappingQuery.Select(x=>x.Id).ToListAsync();if(mapIds.Count==0)return;
+  var adminId=await db.Users.Where(x=>x.IsAdmin).OrderBy(x=>x.Id).Select(x=>(int?)x.Id).FirstOrDefaultAsync();
+  var parameterIds=parameters.Select(x=>x.Id).ToList();
+  var assessmentRows=await db.SupplierPartAssessorEvaluations.Where(x=>mapIds.Contains(x.SupplierPartId)&&parameterIds.Contains(x.PaymentParameterId)).ToListAsync();
+  var realScores=assessmentRows.Where(x=>!x.IsDefault).GroupBy(x=>(x.SupplierPartId,x.PaymentParameterId))
+   .ToDictionary(g=>g.Key,g=>Math.Round(g.Average(x=>x.Score),2,MidpointRounding.AwayFromZero));
+  var adminDefaults=assessmentRows.Where(x=>x.IsDefault&&adminId.HasValue&&x.AssessorUserId==adminId.Value)
+   .Select(x=>(x.SupplierPartId,x.PaymentParameterId)).ToHashSet();
+  foreach(var mapId in mapIds)
+  foreach(var parameter in parameters)
+  {
+   var key=(mapId,parameter.Id);
+   if(!realScores.ContainsKey(key)&&adminId.HasValue&&!adminDefaults.Contains(key))
+    db.SupplierPartAssessorEvaluations.Add(new SupplierPartAssessorEvaluation{SupplierPartId=mapId,PaymentParameterId=parameter.Id,AssessorUserId=adminId.Value,Score=1m,IsDefault=true,CreatedAt=DateTime.UtcNow,UpdatedAt=DateTime.UtcNow});
+  }
+  var aggregates=await db.SupplierPartEvaluations.Where(x=>mapIds.Contains(x.SupplierPartId)&&parameterIds.Contains(x.PaymentParameterId)).ToListAsync();
+  var aggregateByKey=aggregates.ToDictionary(x=>(x.SupplierPartId,x.PaymentParameterId));
+  foreach(var mapId in mapIds)
+  foreach(var parameter in parameters)
+  {
+   var key=(mapId,parameter.Id);var average=realScores.GetValueOrDefault(key,1m);
+   if(aggregateByKey.TryGetValue(key,out var aggregate)){aggregate.Score=average;aggregate.IsActive=true;aggregate.UpdatedAt=DateTime.UtcNow;}
+   else db.SupplierPartEvaluations.Add(new SupplierPartEvaluation{SupplierPartId=mapId,PaymentParameterId=parameter.Id,Score=average,IsActive=true,UpdatedAt=DateTime.UtcNow});
+  }
+  await db.SaveChangesAsync();
  }
 
  public record EvaluationEditItem(int ParameterId,decimal Score);

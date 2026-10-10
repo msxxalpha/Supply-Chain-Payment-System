@@ -47,6 +47,7 @@
 @if(can("SupplierPartEvaluation.View")){
 <details class="sidebar-section sidebar-group" @(path.StartsWithSegments("/SupplierPartEvaluation") ? "open" : null)>
  <summary class="sidebar-caption">ارزیابی‌ها <span class="sidebar-chevron">⌄</span></summary>
+ <a class="nav-item @(Context.Request.Path.Value?.Equals("/SupplierPartEvaluation/Dashboard",StringComparison.OrdinalIgnoreCase) == true?"active":"")" href="/SupplierPartEvaluation/Dashboard"><span class="nav-icon">▦</span><span>داشبورد عملکرد من</span></a>
  <a class="nav-item @Active("/SupplierPartEvaluation")" href="/SupplierPartEvaluation"><span class="nav-icon">✓</span><span>امتیازدهی قطعه–تامین‌کننده</span></a>
 </details>}
 @if(isAdmin || User.HasClaim("Permission","Users.Manage")){

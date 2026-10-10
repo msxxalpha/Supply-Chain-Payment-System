@@ -5,6 +5,7 @@ public class AccountController(AppDbContext db,CompanySettingsService companySet
  string DefaultLandingUrl(ClaimsPrincipal? principal = null)
  {
   principal ??= User;
+  if(principal.IsInRole("SUPPLIER_PART_ASSESSOR")) return "/SupplierPartEvaluation/Dashboard";
   if(principal.HasClaim("Permission","Dashboard.View")) return "/";
   if(principal.HasClaim("Permission","SupplierPartEvaluation.View")) return "/SupplierPartEvaluation";
   if(principal.HasClaim("Permission","Reports.View")) return "/Reports";
@@ -26,6 +27,9 @@ public class AccountController(AppDbContext db,CompanySettingsService companySet
   var path = returnUrl.Split('?', '#')[0].TrimEnd('/');
   var isDashboardPath = path.Length == 0 ||
       path.Equals("/Home", StringComparison.OrdinalIgnoreCase);
+
+  if (isDashboardPath && principal.IsInRole("SUPPLIER_PART_ASSESSOR"))
+      return "/SupplierPartEvaluation/Dashboard";
 
   if (isDashboardPath && !principal.HasClaim("Permission", "Dashboard.View"))
       return DefaultLandingUrl(principal);
