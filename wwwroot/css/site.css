@@ -162,3 +162,29 @@ h1,h2,h3,h4,h5,h6{color:var(--navy);font-weight:900}h1{font-size:30px}h2{font-si
 
 /* Keep the score placeholder readable while it fits in the narrow score input. */
 .score-select::placeholder{font-size:8px;font-weight:500;opacity:1}
+
+/* Manual payment allocation recommendation modal and selected-row context menu */
+.allocation-recommendation-backdrop{display:none;position:fixed;inset:0;z-index:1300;background:rgba(10,26,40,.58);padding:24px;align-items:center;justify-content:center}
+.allocation-recommendation-backdrop.is-open{display:flex}
+body.recommendation-modal-open{overflow:hidden}
+.allocation-recommendation-modal{width:min(1200px,100%);max-height:min(88vh,900px);display:flex;flex-direction:column;background:#fff;border:1px solid #dce6ed;border-radius:18px;box-shadow:0 24px 80px rgba(0,0,0,.25);overflow:hidden}
+.allocation-recommendation-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:20px 22px 14px;border-bottom:1px solid #e8eef2}
+.allocation-recommendation-header h3{font-size:18px;font-weight:900;color:var(--navy);margin:4px 0 6px}
+.allocation-recommendation-header p{font-size:11px;color:#6d8190;line-height:1.9;margin:0;max-width:850px}
+.allocation-recommendation-close{width:34px;height:34px;flex:none;border:1px solid #dce5eb;border-radius:10px;background:#fff;color:#60788a;font-size:25px;line-height:1}
+.allocation-recommendation-summary{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 22px;background:#f5f8fa;color:#657d8e;font-size:10px}
+.allocation-recommendation-summary strong{color:var(--navy);white-space:nowrap}
+.allocation-recommendation-table-wrap{overflow:auto;flex:1;min-height:120px}
+.allocation-recommendation-table{margin:0;min-width:950px}
+.allocation-recommendation-table thead th{position:sticky;top:0;z-index:2;background:#f0f5f8;white-space:nowrap}
+.allocation-recommendation-table tbody tr:hover{background:#f5f9fb}
+.recommendation-check-cell{width:44px;text-align:center!important}
+.recommendation-check-cell input{width:16px;height:16px;accent-color:var(--blue);cursor:pointer}
+.allocation-recommendation-footer{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 22px;border-top:1px solid #e6edf1;background:#fff;color:#6b8090;font-size:11px}
+.allocation-recommendation-footer>div{display:flex;gap:8px}
+.selected-row-context-menu{display:none;position:fixed;z-index:1400;width:200px;padding:5px;background:#fff;border:1px solid #dbe5ec;border-radius:10px;box-shadow:0 12px 35px rgba(16,42,67,.18)}
+.selected-row-context-menu.is-open{display:grid;gap:3px}
+.selected-row-context-menu button{border:0;border-radius:6px;background:#fff;text-align:right;padding:9px 10px;font-size:11px;color:#415c70}
+.selected-row-context-menu button:hover:not(:disabled){background:#edf5f9;color:var(--navy)}
+.selected-row-context-menu button:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:700px){.allocation-recommendation-backdrop{padding:8px}.allocation-recommendation-modal{max-height:94vh;border-radius:12px}.allocation-recommendation-header{padding:14px}.allocation-recommendation-header h3{font-size:15px}.allocation-recommendation-summary{align-items:flex-start;flex-direction:column;padding:10px 14px}.allocation-recommendation-footer{padding:12px;align-items:flex-start;flex-direction:column}.allocation-recommendation-footer>div{width:100%}.allocation-recommendation-footer button{flex:1}}

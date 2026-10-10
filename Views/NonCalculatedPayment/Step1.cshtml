@@ -192,3 +192,160 @@
     refresh();
 })();
 </script>
+<div id="allocationRecommendationModal" class="allocation-recommendation-backdrop" aria-hidden="true">
+  <section class="allocation-recommendation-modal" role="dialog" aria-modal="true" aria-labelledby="allocationRecommendationTitle">
+    <header class="allocation-recommendation-header">
+      <div>
+        <div class="eyebrow">تحلیل اولویت پرداخت</div>
+        <h3 id="allocationRecommendationTitle">توصیه تخصیص به تامین‌کنندگان</h3>
+        <p>امتیاز اولویت از مانده مطالبات، سن بدهی نسبت به مهلت تسویه، سررسیدگذشتگی، پوشش پرداخت و تعداد رسیدهای باز استفاده می‌کند. این فهرست پیشنهاد تحلیلی است و جایگزین تصمیم نهایی شما نیست.</p>
+      </div>
+      <button type="button" class="allocation-recommendation-close" data-close-recommendation aria-label="بستن">×</button>
+    </header>
+    <div class="allocation-recommendation-summary">
+      <span>ترتیب: امتیاز اولویت بیشتر، پوشش پرداخت کمتر، سپس مانده مطالبات بیشتر</span>
+      <strong id="recommendationLimitLabel"></strong>
+    </div>
+    <div class="table-responsive allocation-recommendation-table-wrap">
+      <table class="table modern-table allocation-recommendation-table">
+        <thead><tr>
+          <th class="recommendation-check-cell"><input type="checkbox" id="recommendationSelectAll" aria-label="انتخاب یا لغو انتخاب همه ردیف‌ها"></th>
+          <th>رتبه</th><th>تامین‌کننده</th><th>مطالبات کل</th><th>پوشش پرداخت</th><th>رسید باز</th><th>سررسیدگذشته</th><th>سن بدهی/مهلت</th><th>امتیاز اولویت</th>
+        </tr></thead>
+        <tbody id="allocationRecommendationRows">
+        @foreach(var x in Model.AvailableSuppliers)
+        {
+          <tr data-id="@x.SupplierId" data-title="@x.SupplierTitle" data-initial="@x.InitialClaimAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-current="@x.CurrentDebt.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-total="@x.TotalDebt.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-priority="@x.Priority.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-coverage="@x.Coverage.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-age="@x.AgeRatio.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-overdue="@x.Overdue" data-open="@x.OpenReceiptCount">
+            <td class="recommendation-check-cell"><input type="checkbox" class="recommendation-row-check" aria-label="انتخاب تامین‌کننده @x.SupplierTitle"></td>
+            <td class="recommendation-rank"></td>
+            <td class="fw-bold">@x.SupplierTitle</td>
+            <td class="amount-emphasis">@x.TotalDebt.ToString("N0")</td>
+            <td>@((x.Coverage * 100m).ToString("N1"))٪</td>
+            <td>@x.OpenReceiptCount.ToString("N0")</td>
+            <td>@x.Overdue.ToString("N0")</td>
+            <td>@x.AgeRatio.ToString("N2")</td>
+            <td><span class="priority-pill">@x.Priority.ToString("N1")</span></td>
+          </tr>
+        }
+        </tbody>
+      </table>
+    </div>
+    <footer class="allocation-recommendation-footer">
+      <span id="recommendationSelectedCount">۰ تامین‌کننده انتخاب‌شده</span>
+      <div>
+        <button type="button" class="btn btn-outline-secondary" data-close-recommendation>انصراف</button>
+        <button type="button" id="applyAllocationRecommendation" class="btn btn-main">ثبت و جایگزینی فهرست منتخب</button>
+      </div>
+    </footer>
+  </section>
+</div>
+<div id="selectedRowContextMenu" class="selected-row-context-menu" role="menu">
+  <button type="button" id="copySupplierRow" role="menuitem">کپی ردیف</button>
+  <button type="button" id="pasteSupplierRow" role="menuitem" disabled>جایگذاری ردیف کپی‌شده</button>
+</div>
+<script>
+(function(){
+  const trigger=document.getElementById("openAllocationRecommendation");
+  const modal=document.getElementById("allocationRecommendationModal");
+  const rowsBody=document.getElementById("allocationRecommendationRows");
+  const selectAll=document.getElementById("recommendationSelectAll");
+  const limitLabel=document.getElementById("recommendationLimitLabel");
+  const selectedCount=document.getElementById("recommendationSelectedCount");
+  const selectedBody=document.querySelector("#selectedSuppliers tbody");
+  const hidden=document.getElementById("selectedHiddenFields");
+  const countBadge=document.getElementById("selectedCount");
+  const contextMenu=document.getElementById("selectedRowContextMenu");
+  let copiedRow=null, contextTarget=null;
+
+  function normalizeDigits(v){return String(v||"").replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/[٠-٩]/g,d=>String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));}
+  function fmt(v){return Number(v||0).toLocaleString("fa-IR",{maximumFractionDigits:0});}
+  function refreshSelected(){
+    const rows=[...selectedBody.querySelectorAll("tr")];
+    countBadge.textContent=rows.length.toLocaleString("fa-IR")+" آیتم";
+    hidden.replaceChildren();
+    rows.forEach(row=>{
+      const input=document.createElement("input");
+      input.type="hidden";input.name="supplierIds";input.value=row.dataset.id;
+      hidden.appendChild(input);
+    });
+  }
+  function makeSelectedRow(source){
+    const tr=document.createElement("tr");
+    tr.dataset.id=source.dataset.id;
+    tr.dataset.title=source.dataset.title;
+    tr.dataset.initial=source.dataset.initial;
+    tr.dataset.current=source.dataset.current;
+    const values=[
+      [source.dataset.title,"fw-bold"],
+      [fmt(source.dataset.initial)," "],
+      [fmt(source.dataset.current)," "],
+      [fmt(Number(source.dataset.initial||0)+Number(source.dataset.current||0)),"amount-emphasis"]
+    ];
+    values.forEach(([value,cls])=>{const td=document.createElement("td");td.className=cls;td.textContent=value;tr.appendChild(td);});
+    return tr;
+  }
+  function closeModal(){modal.classList.remove("is-open");modal.setAttribute("aria-hidden","true");document.body.classList.remove("recommendation-modal-open");}
+  function updateCheckCount(){
+    const visible=[...rowsBody.querySelectorAll("tr")].filter(row=>row.style.display!=="none");
+    const checked=visible.filter(row=>row.querySelector(".recommendation-row-check").checked).length;
+    selectedCount.textContent=checked.toLocaleString("fa-IR")+" تامین‌کننده انتخاب‌شده";
+    selectAll.checked=visible.length>0&&checked===visible.length;
+    selectAll.indeterminate=checked>0&&checked<visible.length;
+  }
+  trigger.addEventListener("click",()=>{
+    const raw=window.prompt("جدول پیشنهادی اولویت‌بندی‌شده شامل چند تامین‌کننده باشد؟",String(Math.min(10,rowsBody.querySelectorAll("tr").length)));
+    if(raw===null)return;
+    const n=Number(normalizeDigits(raw).replace(/[^0-9]/g,""));
+    if(!Number.isInteger(n)||n<1){window.alert("تعداد باید عدد صحیح بزرگ‌تر از صفر باشد.");return;}
+    const candidates=[...rowsBody.querySelectorAll("tr")];
+    candidates.sort((a,b)=>Number(b.dataset.priority)-Number(a.dataset.priority)||Number(a.dataset.coverage)-Number(b.dataset.coverage)||Number(b.dataset.total)-Number(a.dataset.total)||Number(b.dataset.overdue)-Number(a.dataset.overdue));
+    candidates.forEach((row,index)=>{
+      rowsBody.appendChild(row);
+      row.style.display=index<Math.min(n,candidates.length)?"":"none";
+      row.querySelector(".recommendation-row-check").checked=false;
+      row.querySelector(".recommendation-rank").textContent=(index+1).toLocaleString("fa-IR");
+    });
+    limitLabel.textContent=Math.min(n,candidates.length).toLocaleString("fa-IR")+" از "+candidates.length.toLocaleString("fa-IR")+" تامین‌کننده واجد شرایط";
+    selectAll.checked=false;selectAll.indeterminate=false;updateCheckCount();
+    modal.classList.add("is-open");modal.setAttribute("aria-hidden","false");document.body.classList.add("recommendation-modal-open");
+  });
+  selectAll.addEventListener("change",()=>{
+    rowsBody.querySelectorAll("tr").forEach(row=>{if(row.style.display!=="none")row.querySelector(".recommendation-row-check").checked=selectAll.checked;});
+    updateCheckCount();
+  });
+  rowsBody.addEventListener("change",e=>{if(e.target.classList.contains("recommendation-row-check"))updateCheckCount();});
+  modal.querySelectorAll("[data-close-recommendation]").forEach(btn=>btn.addEventListener("click",closeModal));
+  modal.addEventListener("click",e=>{if(e.target===modal)closeModal();});
+  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&modal.classList.contains("is-open"))closeModal();});
+  document.getElementById("applyAllocationRecommendation").addEventListener("click",()=>{
+    const chosen=[...rowsBody.querySelectorAll("tr")].filter(row=>row.style.display!=="none"&&row.querySelector(".recommendation-row-check").checked);
+    if(!chosen.length){window.alert("حداقل یک تامین‌کننده را انتخاب کنید.");return;}
+    selectedBody.replaceChildren();
+    chosen.forEach(row=>selectedBody.appendChild(makeSelectedRow(row)));
+    refreshSelected();closeModal();
+  });
+
+  function hideMenu(){contextMenu.classList.remove("is-open");contextTarget=null;}
+  selectedBody.addEventListener("contextmenu",e=>{
+    const row=e.target.closest("tr");if(!row)return;
+    e.preventDefault();contextTarget=row;
+    contextMenu.style.left=Math.max(8,Math.min(e.clientX,window.innerWidth-215))+"px";
+    contextMenu.style.top=Math.max(8,Math.min(e.clientY,window.innerHeight-105))+"px";
+    contextMenu.classList.add("is-open");
+    document.getElementById("pasteSupplierRow").disabled=!copiedRow;
+  });
+  document.getElementById("copySupplierRow").addEventListener("click",()=>{
+    if(contextTarget)copiedRow=contextTarget.cloneNode(true);
+    document.getElementById("pasteSupplierRow").disabled=!copiedRow;
+    hideMenu();
+  });
+  document.getElementById("pasteSupplierRow").addEventListener("click",()=>{
+    if(!copiedRow)return;
+    const duplicate=copiedRow.cloneNode(true);
+    if(contextTarget&&contextTarget.isConnected)contextTarget.after(duplicate);else selectedBody.appendChild(duplicate);
+    hideMenu();refreshSelected();
+  });
+  document.addEventListener("click",e=>{if(!e.target.closest("#selectedRowContextMenu"))hideMenu();});
+  window.addEventListener("scroll",hideMenu,true);
+})();
+</script>
