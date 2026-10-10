@@ -248,10 +248,37 @@ public class SupplierPartEvaluationController(AppDbContext db) : Controller
             .ThenBy(x => x.Title)
             .ToListAsync();
 
-        return parameters
-            .Where(x => User.HasClaim(SecurityPermissions.Claim, $"SupplierPartEvaluation.Parameter.{x.Id}")
-                     || User.HasClaim("IsAdmin", "1"))
-            .ToList();
+        var currentUser = await db.Users.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == UserId && x.IsActive);
+        if (currentUser == null)
+            return [];
+
+        // Resolve parameter-level grants from the current database role memberships,
+        // not only from claims that may have been issued by an older sign-in.
+        if (currentUser.IsAdmin)
+            return parameters;
+
+        var permissionCodes = await (
+            from userRole in db.UserRoles
+            join role in db.Roles on userRole.RoleId equals role.Id
+            join rolePermission in db.RolePermissions on role.Id equals rolePermission.RoleId
+            join permission in db.Permissions on rolePermission.PermissionId equals permission.Id
+            where userRole.UserId == currentUser.Id
+                  && role.IsActive
+                  && permission.Code.StartsWith("SupplierPartEvaluation.Parameter.")
+            select permission.Code)
+            .Distinct()
+            .ToListAsync();
+
+        const string prefix = "SupplierPartEvaluation.Parameter.";
+        var permittedIds = permissionCodes
+            .Where(code => code.StartsWith(prefix, StringComparison.Ordinal))
+            .Select(code => int.TryParse(code[prefix.Length..], out var id) ? (int?)id : null)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .ToHashSet();
+
+        return parameters.Where(parameter => permittedIds.Contains(parameter.Id)).ToList();
     }
 
     async Task RefreshAggregateAsync(int supplierPartId, int parameterId)

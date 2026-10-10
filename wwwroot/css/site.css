@@ -158,3 +158,7 @@ h1,h2,h3,h4,h5,h6{color:var(--navy);font-weight:900}h1{font-size:30px}h2{font-si
 .sticky-table-head-clone table{margin:0!important;border-collapse:separate!important;border-spacing:0!important;table-layout:fixed}
 .sticky-table-head-clone thead th{background:#f0f5f8!important;color:#4e667a;border:0!important;border-bottom:1px solid #e1eaf0!important;font-size:10px;font-weight:900;padding:13px;white-space:normal;overflow-wrap:anywhere}
 .sticky-table-head-clone thead tr{height:auto}
+
+
+/* Keep the score placeholder readable while it fits in the narrow score input. */
+.score-select::placeholder{font-size:8px;font-weight:500;opacity:1}
