@@ -3,34 +3,61 @@
 @inject CompanySettingsService CompanySettingsService
 @{var company=await CompanySettingsService.GetAsync();}
 <!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>@ViewData["Title"] - @company.SystemName</title>@if(company.FaviconBytes?.Length>0){<link rel="icon" href="/Brand/Favicon?v=@company.UpdatedAt.Ticks">}<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/font-face.css"><link rel="stylesheet" href="~/css/site.css" asp-append-version="true">@RenderSection("Head",required:false)</head><body style="--navy:@company.PrimaryColor;--blue:@company.SecondaryColor;--blue-2:@company.SecondaryColor"><div class="app-shell"><aside class="app-sidebar"><div class="sidebar-brand"><div class="brand-mark brand-mark-image">@if(company.LogoBytes?.Length>0){<img src="/Brand/Logo?v=@company.UpdatedAt.Ticks" alt="@company.CompanyName">}else{<span></span><span></span><span></span>}</div><div><div class="brand-title">@company.ShortName</div><div class="brand-subtitle">@company.SystemName</div></div></div>
-<div class="sidebar-section">
-<div class="sidebar-caption">نمای کلی</div>
-@if(User.HasClaim("Permission","Dashboard.View")){<a class="nav-item @Active("/")" href="/"><span class="nav-icon">⌂</span><span>داشبورد اصلی</span></a>}
-</div>
-@if(User.HasClaim("Permission","Payment.Calculate")||User.HasClaim("Permission","Payment.NonCalculated")||User.HasClaim("Permission","Payment.History")){<div class="sidebar-section"><div class="sidebar-caption">عملیات پرداخت</div>
-@if(User.HasClaim("Permission","Payment.Calculate")){<a class="nav-item @Active("/PaymentWizard")" href="/PaymentWizard"><span class="nav-icon">₿</span><span>محاسبه و تخصیص پرداخت</span></a>}
-@if(User.HasClaim("Permission","Payment.NonCalculated")){<a class="nav-item @Active("/NonCalculatedPayment")" href="/NonCalculatedPayment"><span class="nav-icon">⇢</span><span>پرداخت غیرمحاسباتی</span></a>}
-@if(User.HasClaim("Permission","Payment.History")){<a class="nav-item @Active("/PaymentWizard/History")" href="/PaymentWizard/History"><span class="nav-icon">▥</span><span>سوابق تخصیص‌های ثبت‌شده</span></a>}
-</div>}
-@if(User.HasClaim("Permission","Reports.View")||User.HasClaim("Permission","Reports.SupplierOverview")||User.HasClaim("Permission","Reports.AssessorPerformance")){<div class="sidebar-section"><div class="sidebar-caption">گزارش‌ها و تحلیل</div>
-@if(User.HasClaim("Permission","Reports.View")){<a class="nav-item @Active("/Reports")" href="/Reports"><span class="nav-icon">◫</span><span>داشبورد و گزارش‌های مالی</span></a>}
-@if(User.HasClaim("Permission","Reports.SupplierOverview")){<a class="nav-item @Active("/SupplierOverview")" href="/SupplierOverview"><span class="nav-icon">◉</span><span>مرور تامین‌کننده</span></a>}
-@if(User.HasClaim("Permission","Reports.AssessorPerformance")){<a class="nav-item @Active("/Reports/AssessorPerformance")" href="/Reports/AssessorPerformance"><span class="nav-icon">◷</span><span>عملکرد ارزیابان قطعه–تامین‌کننده</span></a>}
-</div>}
-@if(User.HasClaim("Permission","Setup.Parameters")||User.HasClaim("Permission","Setup.SystemParameters")||User.HasClaim("Permission","Setup.Parts")||User.HasClaim("Permission","Setup.Suppliers")||User.HasClaim("Permission","Setup.Mappings")||User.HasClaim("Permission","Setup.Evaluations")||User.HasClaim("Permission","Setup.Lookups")||User.HasClaim("Permission","Setup.Queries")||User.HasClaim("Permission","Setup.SupplierPriceList")){<div class="sidebar-section"><div class="sidebar-caption">اطلاعات پایه و تنظیمات</div>
-@if(User.HasClaim("Permission","Setup.Parameters")){<a class="nav-item @Active("/Setup/Parameters")" href="/Setup/Parameters"><span class="nav-icon">◈</span><span>پارامترهای پرداخت</span></a>}
-@if(User.HasClaim("Permission","Setup.SystemParameters")){<a class="nav-item @Active("/Setup/SystemParameters")" href="/Setup/SystemParameters"><span class="nav-icon">⚙</span><span>پارامترهای سیستم</span></a>}
-@if(User.HasClaim("Permission","Setup.Parts")){<a class="nav-item @Active("/Setup/Parts")" href="/Setup/Parts"><span class="nav-icon">◇</span><span>کالاهای زنجیره تامین</span></a>}
-@if(User.HasClaim("Permission","Setup.Suppliers")){<a class="nav-item @Active("/Setup/Suppliers")" href="/Setup/Suppliers"><span class="nav-icon">◌</span><span>تامین‌کنندگان</span></a>}
-@if(User.HasClaim("Permission","Setup.Mappings")){<a class="nav-item @Active("/Setup/Mappings")" href="/Setup/Mappings"><span class="nav-icon">↔</span><span>ارتباط قطعه–تامین‌کننده</span></a>}
-@if(User.HasClaim("Permission","Setup.Evaluations")){<a class="nav-item @Active("/Setup/Evaluations")" href="/Setup/Evaluations"><span class="nav-icon">✓</span><span>میانگین ارزیابی قطعه–تامین‌کننده</span></a>}
-@if(User.HasClaim("Permission","Setup.Lookups")){<a class="nav-item @Active("/Setup/Lookups")" href="/Setup/Lookups"><span class="nav-icon">☷</span><span>سایر اطلاعات پایه</span></a>}
-@if(User.HasClaim("Permission","Setup.Queries")){<a class="nav-item @Active("/InputQueries")" href="/InputQueries"><span class="nav-icon">⌘</span><span>مدیریت کوئری‌های منبع</span></a>}
-@if(User.HasClaim("Permission","Setup.SupplierPriceList")){<a class="nav-item @Active("/SupplierPriceList")" href="/SupplierPriceList"><span class="nav-icon">▤</span><span>فهرست بهای تامین‌کنندگان</span></a>}
-</div>}
-@if(User.HasClaim("Permission","SupplierPartEvaluation.View")){<div class="sidebar-section"><div class="sidebar-caption">ارزیابی‌ها</div><a class="nav-item @Active("/SupplierPartEvaluation")" href="/SupplierPartEvaluation"><span class="nav-icon">✓</span><span>امتیازدهی قطعه–تامین‌کننده</span></a></div>}
-@if(User.HasClaim("Permission","Users.Manage")){<div class="sidebar-section"><div class="sidebar-caption">مدیریت دسترسی</div><a class="nav-item @Active("/Users")" href="/Users"><span class="nav-icon">◉</span><span>کاربران، نقش‌ها و دسترسی‌ها</span></a></div>}
-@if(User.HasClaim("IsAdmin","1")){<div class="sidebar-section"><div class="sidebar-caption">ابزارهای مدیر</div><a class="nav-item @Active("/DataMaintenance")" href="/DataMaintenance"><span class="nav-icon">⚠</span><span>پاک‌سازی اطلاعات عملیاتی</span></a></div>}
+@{
+    var path = Context.Request.Path;
+    var isAdmin = User.HasClaim("IsAdmin", "1") || User.IsInRole("SYS_ADMIN");
+    var can = (string code) => isAdmin || User.HasClaim("Permission", code);
+}
+<details class="sidebar-section sidebar-group" @(path == "/" ? "open" : null)>
+ <summary class="sidebar-caption">نمای کلی <span class="sidebar-chevron">⌄</span></summary>
+ @if(can("Dashboard.View")){<a class="nav-item @Active("/")" href="/"><span class="nav-icon">⌂</span><span>داشبورد اصلی</span></a>}
+</details>
+@if(can("Payment.Calculate")||can("Payment.NonCalculated")||can("Payment.History")){
+<details class="sidebar-section sidebar-group" @(path.StartsWithSegments("/PaymentWizard")||path.StartsWithSegments("/NonCalculatedPayment") ? "open" : null)>
+ <summary class="sidebar-caption">عملیات پرداخت <span class="sidebar-chevron">⌄</span></summary>
+ @if(can("Payment.Calculate")){<a class="nav-item @Active("/PaymentWizard")" href="/PaymentWizard"><span class="nav-icon">₿</span><span>محاسبه و تخصیص پرداخت</span></a>}
+ @if(can("Payment.NonCalculated")){<a class="nav-item @Active("/NonCalculatedPayment")" href="/NonCalculatedPayment"><span class="nav-icon">⇢</span><span>پرداخت غیرمحاسباتی</span></a>}
+ @if(can("Payment.History")){<a class="nav-item @Active("/PaymentWizard/History")" href="/PaymentWizard/History"><span class="nav-icon">▥</span><span>سوابق تخصیص‌های ثبت‌شده</span></a>}
+</details>}
+@if(can("Reports.View")||can("Reports.SupplierOverview")||can("Reports.AssessorPerformance")){
+<details class="sidebar-section sidebar-group" @(path.StartsWithSegments("/Reports")||path.StartsWithSegments("/SupplierOverview") ? "open" : null)>
+ <summary class="sidebar-caption">گزارش‌ها و تحلیل <span class="sidebar-chevron">⌄</span></summary>
+ @if(can("Reports.View")){<a class="nav-item @Active("/Reports")" href="/Reports"><span class="nav-icon">◫</span><span>داشبورد و گزارش‌های مالی</span></a>}
+ @if(can("Reports.SupplierOverview")){<a class="nav-item @Active("/SupplierOverview")" href="/SupplierOverview"><span class="nav-icon">◉</span><span>مرور تامین‌کننده</span></a>}
+ @if(can("Reports.AssessorPerformance")){<a class="nav-item @Active("/Reports/AssessorPerformance")" href="/Reports/AssessorPerformance"><span class="nav-icon">◷</span><span>عملکرد ارزیابان قطعه–تامین‌کننده</span></a>}
+</details>}
+@if(can("Setup.Parts")||can("Setup.Suppliers")||can("Setup.Mappings")||can("Setup.Evaluations")||can("Setup.Lookups")||can("Setup.SupplierPriceList")){
+<details class="sidebar-section sidebar-group" @(path.StartsWithSegments("/Setup/Parts")||path.StartsWithSegments("/Setup/Suppliers")||path.StartsWithSegments("/Setup/Mappings")||path.StartsWithSegments("/Setup/Evaluations")||path.StartsWithSegments("/Setup/Lookups")||path.StartsWithSegments("/SupplierPriceList") ? "open" : null)>
+ <summary class="sidebar-caption">اطلاعات پایه زنجیره تامین <span class="sidebar-chevron">⌄</span></summary>
+ @if(can("Setup.Parts")){<a class="nav-item @Active("/Setup/Parts")" href="/Setup/Parts"><span class="nav-icon">◇</span><span>کالاهای زنجیره تامین</span></a>}
+ @if(can("Setup.Suppliers")){<a class="nav-item @Active("/Setup/Suppliers")" href="/Setup/Suppliers"><span class="nav-icon">◌</span><span>تامین‌کنندگان</span></a>}
+ @if(can("Setup.Mappings")){<a class="nav-item @Active("/Setup/Mappings")" href="/Setup/Mappings"><span class="nav-icon">↔</span><span>ارتباط قطعه–تامین‌کننده</span></a>}
+ @if(can("Setup.Evaluations")){<a class="nav-item @Active("/Setup/Evaluations")" href="/Setup/Evaluations"><span class="nav-icon">✓</span><span>میانگین ارزیابی قطعه–تامین‌کننده</span></a>}
+ @if(can("Setup.SupplierPriceList")){<a class="nav-item @Active("/SupplierPriceList")" href="/SupplierPriceList"><span class="nav-icon">▤</span><span>فهرست بهای تامین‌کنندگان</span></a>}
+ @if(can("Setup.Lookups")){<a class="nav-item @Active("/Setup/Lookups")" href="/Setup/Lookups"><span class="nav-icon">☷</span><span>سایر اطلاعات پایه</span></a>}
+</details>}
+@if(can("Setup.Parameters")||can("Setup.SystemParameters")||can("Setup.Queries")){
+<details class="sidebar-section sidebar-group" @(path.StartsWithSegments("/Setup/Parameters")||path.StartsWithSegments("/Setup/SystemParameters")||path.StartsWithSegments("/InputQueries") ? "open" : null)>
+ <summary class="sidebar-caption">تنظیمات <span class="sidebar-chevron">⌄</span></summary>
+ @if(can("Setup.Parameters")){<a class="nav-item @Active("/Setup/Parameters")" href="/Setup/Parameters"><span class="nav-icon">◈</span><span>پارامترهای پرداخت</span></a>}
+ @if(can("Setup.SystemParameters")){<a class="nav-item @Active("/Setup/SystemParameters")" href="/Setup/SystemParameters"><span class="nav-icon">⚙</span><span>پارامترهای سیستم</span></a>}
+ @if(can("Setup.Queries")){<a class="nav-item @Active("/InputQueries")" href="/InputQueries"><span class="nav-icon">⌘</span><span>مدیریت کوئری‌های منبع</span></a>}
+</details>}
+@if(can("SupplierPartEvaluation.View")){
+<details class="sidebar-section sidebar-group" @(path.StartsWithSegments("/SupplierPartEvaluation") ? "open" : null)>
+ <summary class="sidebar-caption">ارزیابی‌ها <span class="sidebar-chevron">⌄</span></summary>
+ <a class="nav-item @Active("/SupplierPartEvaluation")" href="/SupplierPartEvaluation"><span class="nav-icon">✓</span><span>امتیازدهی قطعه–تامین‌کننده</span></a>
+</details>}
+@if(isAdmin || User.HasClaim("Permission","Users.Manage")){
+<details class="sidebar-section sidebar-group" @(path.StartsWithSegments("/Users") ? "open" : null)>
+ <summary class="sidebar-caption">مدیریت دسترسی‌ها و نقش‌ها <span class="sidebar-chevron">⌄</span></summary>
+ <a class="nav-item @Active("/Users")" href="/Users"><span class="nav-icon">◉</span><span>کاربران، نقش‌ها و دسترسی‌ها</span></a>
+</details>}
+@if(isAdmin){
+<details class="sidebar-section sidebar-group" @(path.StartsWithSegments("/DataMaintenance") ? "open" : null)>
+ <summary class="sidebar-caption">ابزارهای مدیر <span class="sidebar-chevron">⌄</span></summary>
+ <a class="nav-item @Active("/DataMaintenance")" href="/DataMaintenance"><span class="nav-icon">⚠</span><span>پاک‌سازی اطلاعات عملیاتی</span></a>
+</details>}
 <div class="sidebar-footer"><div class="footer-dot"></div><div><div class="footer-title">وضعیت سامانه</div><div class="footer-status">در حال سرویس‌دهی</div></div></div></aside>
 <div class="app-main"><header class="app-topbar"><div class="topbar-left"><button class="mobile-menu" type="button" onclick="document.body.classList.toggle('sidebar-open')">☰</button><div><div class="topbar-overline">سامانه مالی زنجیره تامین</div><div class="topbar-title">@ViewData["Title"]</div></div></div><div class="topbar-user"><div class="company-topbar-brand">@if(company.LogoBytes?.Length>0){<img src="/Brand/Logo?v=@company.UpdatedAt.Ticks" alt="@company.CompanyName">}else{<div class="company-topbar-placeholder">IS</div>}<div><strong>@company.CompanyName</strong><span>@company.Slogan</span></div></div><div class="topbar-divider"></div><div class="user-meta"><strong>@(User.Identity?.Name??"کاربر")</strong><span>@(User.HasClaim("IsAdmin","1")?"مدیر سامانه":"کاربر")</span></div><div class="user-avatar">@((User.Identity?.Name??"ک").Trim().FirstOrDefault())</div><form method="post" action="/Account/Logout">@Html.AntiForgeryToken()<button class="btn btn-logout" type="submit">خروج</button></form></div></header><main class="app-content">@if(TempData["Result"]!=null){<div class="alert app-alert app-alert-success"><span class="alert-icon">✓</span><span>@TempData["Result"]</span></div>}@if(TempData["Error"]!=null){<div class="alert app-alert app-alert-error"><span class="alert-icon">!</span><span>@TempData["Error"]</span></div>}@RenderBody()</main><footer class="app-footer"><span>@(string.IsNullOrWhiteSpace(company.FooterText)?company.SystemName:company.FooterText)</span><span>© @company.CompanyName</span></footer></div></div><div class="sidebar-overlay" onclick="document.body.classList.remove('sidebar-open')"></div><script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script><script src="~/js/jalali-datepicker.js" asp-append-version="true"></script><script src="~/js/site.js" asp-append-version="true"></script>@RenderSection("Scripts",required:false)</body></html>
 @functions{string Active(string prefix){var p=Context.Request.Path.Value??"/";return prefix=="/"?(p=="/"?"active":""):(p.StartsWith(prefix,StringComparison.OrdinalIgnoreCase)?"active":"");}}
