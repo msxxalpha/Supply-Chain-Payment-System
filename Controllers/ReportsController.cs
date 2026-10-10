@@ -16,6 +16,13 @@ public class ReportsController(FinancialReportingService reports, AppDbContext d
         return View(data);
     }
 
+    [Authorize(Policy = SecurityPermissions.PriceListAnalysis)]
+    public async Task<IActionResult> PriceTrends()
+    {
+        var data = await reports.GetPriceListAnalysisAsync();
+        return View(data);
+    }
+
     [Authorize(Policy = SecurityPermissions.AssessorPerformance)]
     public async Task<IActionResult> AssessorPerformance(string? from, string? to)
     {
