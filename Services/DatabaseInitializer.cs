@@ -181,23 +181,23 @@ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_UserActivitySessions_Use
     await db.SaveChangesAsync();
    }
 
-   // Reconcile this sensitive permission for existing databases as well as new installs.
-   // Evaluator accounts must never inherit access to financial dashboards by default.
-   if(def.Key=="SUPPLIER_PART_ASSESSOR")
-   {
-    var dashboardPermissionId=await db.Permissions.Where(x=>x.Code=="Dashboard.View").Select(x=>(int?)x.Id).FirstOrDefaultAsync();
-    if(dashboardPermissionId.HasValue)
-    {
-     var existingDashboardGrant=await db.RolePermissions
-       .SingleOrDefaultAsync(x=>x.RoleId==role.Id && x.PermissionId==dashboardPermissionId.Value);
-     if(existingDashboardGrant!=null)
-     {
-      db.RolePermissions.Remove(existingDashboardGrant);
-      await db.SaveChangesAsync();
-     }
-    }
-   }
   }
+
+  // One-time migration: remove the historical default dashboard grant from the evaluator role.
+  // A marker ensures a future administrator can deliberately re-grant it without startup undoing that choice.
+  await db.Database.ExecuteSqlRawAsync("""
+IF OBJECT_ID(N'dbo.SecurityPermissionMigrations',N'U') IS NULL
+ CREATE TABLE dbo.SecurityPermissionMigrations(Version nvarchar(100) NOT NULL CONSTRAINT PK_SecurityPermissionMigrations PRIMARY KEY, AppliedAtUtc datetime2 NOT NULL DEFAULT(sysutcdatetime()));
+IF NOT EXISTS(SELECT 1 FROM dbo.SecurityPermissionMigrations WHERE Version=N'RevokeEvaluatorDashboardDefaultV1')
+BEGIN
+ DELETE rp
+ FROM dbo.AppRolePermissions rp
+ INNER JOIN dbo.AppRoles r ON r.Id=rp.RoleId
+ INNER JOIN dbo.AppPermissions p ON p.Id=rp.PermissionId
+ WHERE r.Code=N'SUPPLIER_PART_ASSESSOR' AND p.Code=N'Dashboard.View';
+ INSERT INTO dbo.SecurityPermissionMigrations(Version) VALUES(N'RevokeEvaluatorDashboardDefaultV1');
+END
+""");
  }
  public static async Task SeedAsync(AppDbContext db){
   if(!await db.LookupValues.AnyAsync()){db.LookupValues.AddRange(
