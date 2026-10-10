@@ -15,6 +15,7 @@
         <h2>انتخاب تامین‌کنندگان</h2>
         <p class="text-muted">فهرست سمت راست دقیقاً با ترتیب شاخص تحلیل تامین‌کنندگان داشبورد نمایش داده می‌شود. یک تامین‌کننده را می‌توان چند بار به فهرست پرداخت منتقل کرد.</p>
     </div>
+    <button type="button" id="openAllocationRecommendation" class="btn btn-main">✦ توصیه تخصیص</button>
     <a class="btn btn-outline-secondary" href="/PaymentWizard/History">سوابق پرداخت‌ها</a>
 </div>
 
@@ -87,7 +88,7 @@
                     <tbody>
                     @foreach(var x in Model.AvailableSuppliers)
                     {
-                        <tr data-id="@x.SupplierId" data-title="@x.SupplierTitle" data-initial="@x.InitialClaimAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-current="@x.CurrentDebt.ToString(System.Globalization.CultureInfo.InvariantCulture)">
+                        <tr data-id="@x.SupplierId" data-title="@x.SupplierTitle" data-initial="@x.InitialClaimAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-current="@x.CurrentDebt.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-total="@x.TotalDebt.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-priority="@x.Priority.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-coverage="@x.Coverage.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-age="@x.AgeRatio.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-overdue="@x.Overdue" data-open="@x.OpenReceiptCount">
                             <td class="fw-bold">@x.SupplierTitle</td>
                             <td><span class="priority-pill">@x.Priority</span></td>
                             <td>@x.InitialClaimAmount.ToString("N0")</td>
