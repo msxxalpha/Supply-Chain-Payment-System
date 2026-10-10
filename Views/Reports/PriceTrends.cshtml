@@ -1,0 +1,71 @@
+@model Indamin.Payment.Services.PriceListAnalysisData
+@using Indamin.Payment.Services
+@{
+    ViewData["Title"] = "تحلیل فهرست بها و روند قیمت";
+}
+<div class="page-header">
+ <div>
+  <div class="eyebrow">تحلیل خرید و زنجیره تأمین</div>
+  <h2>داشبورد فهرست بها و روند تغییرات قیمت</h2>
+  <p class="text-muted">مقایسه آخرین نرخ ثبت‌شده هر کالا نزد هر تأمین‌کننده با نرخ قبلی همان ارتباط، همراه با اعتبار نرخ‌ها و تاریخچه تغییرات.</p>
+ </div>
+ <div class="export-group">
+  @if (User.HasClaim("Permission", "Setup.SupplierPriceList")) { <a class="btn btn-main" href="/SupplierPriceList">مدیریت فهرست بها</a> }
+  @if (User.HasClaim("Permission", "Reports.View")) { <a class="btn btn-outline-secondary" href="/Reports">داشبورد مالی</a> }
+ </div>
+</div>
+
+<div class="payment-kpi-grid report-kpis">
+ <div class="payment-kpi"><span>کل رکوردهای فهرست بها</span><strong>@Model.TotalRecords.ToString("N0")</strong><small>شامل تاریخچه نرخ‌های ثبت‌شده</small></div>
+ <div class="payment-kpi"><span>نرخ معتبر امروز</span><strong>@Model.ActiveNowCount.ToString("N0")</strong><small>فعال و در بازه اعتبار جاری</small></div>
+ <div class="payment-kpi"><span>تغییرات افزایشی</span><strong>@Model.IncreasedCount.ToString("N0")</strong><small>نسبت به نرخ قبلی همان کالا و تأمین‌کننده</small></div>
+ <div class="payment-kpi"><span>تغییرات کاهشی</span><strong>@Model.DecreasedCount.ToString("N0")</strong><small>نسبت به نرخ قبلی همان کالا و تأمین‌کننده</small></div>
+</div>
+
+<div class="row g-3 mt-1">
+ <div class="col-xl-4"><div class="form-panel h-100"><div class="panel-title"><div><h4>پوشش فهرست بها</h4><span>گستره داده‌های قیمت ثبت‌شده</span></div></div><div class="supplier-debt-cards"><div><span>تأمین‌کنندگان دارای نرخ</span><b>@Model.SupplierCount.ToString("N0")</b></div><div><span>کالاهای دارای نرخ</span><b>@Model.PartCount.ToString("N0")</b></div><div><span>بدون تغییر نسبت به نرخ قبلی</span><b>@Model.UnchangedCount.ToString("N0")</b></div></div></div></div>
+ <div class="col-xl-8"><div class="form-panel h-100"><div class="panel-title"><div><h4>خلاصه تغییر قیمت</h4><span>میانگین ساده درصد تغییر برای ارتباط‌هایی که حداقل دو نرخ دارند</span></div><span class="priority-pill">@Model.AverageChangePercent.ToString("+0.00;-0.00;0.00")٪</span></div><p class="text-muted mb-0">درصد تغییر هر ردیف از مقایسه آخرین نرخ ثبت‌شده با نرخ قبلی همان کالا نزد همان تأمین‌کننده محاسبه شده است. این شاخص میانگین ساده است و بر اساس مبلغ خرید یا حجم مصرف وزن‌دهی نشده است.</p></div></div>
+</div>
+
+<div class="form-panel mt-3">
+ <div class="panel-title"><div><h4>روند تغییر نرخ به تفکیک کالا و تأمین‌کننده</h4><span>ردیف‌ها بر اساس قدر مطلق درصد تغییر مرتب شده‌اند؛ موارد بدون نرخ قبلی تغییر صفر دارند.</span></div><span class="mini-label">@Model.Trends.Count.ToString("N0") ارتباط</span></div>
+ <div class="table-responsive">
+  <table class="table modern-table">
+   <thead><tr><th>تأمین‌کننده</th><th>کد کالا</th><th>عنوان کالا</th><th>نرخ قبلی</th><th>آخرین نرخ</th><th>تغییر مبلغ</th><th>تغییر درصد</th><th>شروع اعتبار آخرین نرخ</th><th>پایان اعتبار</th><th>وضعیت</th><th>تاریخچه</th></tr></thead>
+   <tbody>
+   @foreach (var x in Model.Trends)
+   {
+    <tr>
+     <td><div class="fw-bold">@x.SupplierTitle</div><small class="text-muted">@x.SupplierCode</small></td>
+     <td>@x.PartCode</td><td>@x.PartTitle</td>
+     <td>@(x.PreviousPrice.HasValue ? x.PreviousPrice.Value.ToString("N0") : "—")</td>
+     <td class="amount-emphasis">@x.LatestPrice.ToString("N0")</td>
+     <td class="@(x.ChangeAmount > 0 ? "text-danger" : x.ChangeAmount < 0 ? "text-success" : "")">@((x.ChangeAmount > 0 ? "+" : "") + x.ChangeAmount.ToString("N0"))</td>
+     <td class="@(x.ChangePercent > 0 ? "text-danger" : x.ChangePercent < 0 ? "text-success" : "")">@x.ChangePercent.ToString("+0.00;-0.00;0.00")٪</td>
+     <td>@PersianDateService.ToJalali(x.LatestValidFrom)</td>
+     <td>@PersianDateService.ToJalali(x.LatestValidTo)</td>
+     <td>@if (x.LatestActive && x.LatestValidFrom.Date <= DateTime.Today && x.LatestValidTo.Date >= DateTime.Today) { <span class="validation-chip validation-ok">معتبر امروز</span> } else if (!x.LatestActive) { <span class="mini-label">غیرفعال</span> } else { <span class="mini-label">خارج از اعتبار</span> }</td>
+     <td>@x.HistoryCount.ToString("N0") نرخ</td>
+    </tr>
+   }
+   @if (Model.Trends.Count == 0) { <tr><td colspan="11" class="text-center text-muted py-4">هنوز رکوردی در فهرست بهای تأمین‌کنندگان ثبت نشده است.</td></tr> }
+   </tbody>
+  </table>
+ </div>
+</div>
+
+<div class="form-panel mt-3">
+ <div class="panel-title"><div><h4>آخرین تغییرات ثبت‌شده</h4><span>۱۰۰ رکورد آخر بر اساس زمان آخرین ویرایش</span></div></div>
+ <div class="table-responsive">
+  <table class="table modern-table">
+   <thead><tr><th>آخرین ویرایش</th><th>تأمین‌کننده</th><th>کالا</th><th>قیمت</th><th>از تاریخ</th><th>تا تاریخ</th><th>وضعیت رکورد</th></tr></thead>
+   <tbody>
+   @foreach (var x in Model.RecentHistory)
+   {
+    <tr><td>@PersianDateService.ToJalali(x.UpdatedAt)</td><td>@x.SupplierTitle <small class="text-muted">(@x.SupplierCode)</small></td><td>@x.PartTitle <small class="text-muted">(@x.PartCode)</small></td><td class="amount-emphasis">@x.PurchasePrice.ToString("N0")</td><td>@PersianDateService.ToJalali(x.ValidFrom)</td><td>@PersianDateService.ToJalali(x.ValidTo)</td><td>@(x.IsActive ? "فعال" : "غیرفعال")</td></tr>
+   }
+   @if (Model.RecentHistory.Count == 0) { <tr><td colspan="7" class="text-center text-muted py-4">تاریخچه‌ای برای نمایش وجود ندارد.</td></tr> }
+   </tbody>
+  </table>
+ </div>
+</div>
