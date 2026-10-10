@@ -124,3 +124,37 @@ h1,h2,h3,h4,h5,h6{color:var(--navy);font-weight:900}h1{font-size:30px}h2{font-si
 .sidebar-chevron{font-size:15px;transition:transform .18s ease;line-height:1}
 .sidebar-group[open]>summary .sidebar-chevron{transform:rotate(180deg)}
 .sidebar-group .nav-item{margin-top:2px;margin-bottom:2px}
+
+
+/* Evaluator scoring guide: compact horizontal chooser with one full-width detail panel */
+.score-guide-library{background:#fff;border:1px solid var(--line);border-radius:16px;padding:15px 17px;box-shadow:0 7px 22px rgba(16,42,67,.045)}
+.score-guide-library-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px}
+.score-guide-library-heading h3{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:900;color:var(--navy);margin:0}
+.score-guide-library-heading h3 span{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;background:#eef5f9;color:var(--blue);font-size:16px}
+.score-guide-library-heading p{font-size:10px;color:#8293a0;margin:4px 0 0;line-height:1.8}
+.score-guide-hint{font-size:9px;color:#637b8e;background:#f4f8fa;border:1px solid #e5edf2;border-radius:20px;padding:5px 9px;white-space:nowrap}
+.score-guide-buttons{display:flex;flex-wrap:wrap;gap:8px}
+.score-guide-button{display:inline-flex;align-items:center;gap:8px;padding:8px 11px;border:1px solid #dfe8ee;border-radius:11px;background:#fff;color:#456073;max-width:100%;font:inherit;font-size:10px;font-weight:800;cursor:pointer;transition:background .15s,border-color .15s,box-shadow .15s}
+.score-guide-button:hover,.score-guide-button:focus-visible{background:#f4f9fc;border-color:#9cbdd0;outline:none}
+.score-guide-button.is-selected,.score-guide-button[aria-expanded="true"]{background:#eaf3f8;border-color:var(--blue);color:var(--navy);box-shadow:0 0 0 2px rgba(45,127,179,.08)}
+.score-guide-button-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:25px;height:25px;border-radius:8px;background:#edf4f8;color:var(--blue);font-size:14px;font-weight:900}
+.score-guide-button-title{overflow-wrap:anywhere}
+.score-guide-button-arrow{font-size:15px;line-height:1;transition:transform .15s;color:#8ba0af}
+.score-guide-button[aria-expanded="true"] .score-guide-button-arrow{transform:rotate(180deg);color:var(--blue)}
+.score-guide-panel{margin-top:12px;border:1px solid #bfd5e2;border-right:4px solid var(--blue);border-radius:12px;background:linear-gradient(135deg,#fbfdfe,#f3f8fb);padding:14px 16px;animation:scoreGuideReveal .16s ease-out}
+.score-guide-panel[hidden]{display:none!important}
+.score-guide-panel-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.score-guide-panel-title{display:flex;align-items:center;gap:10px;min-width:0}
+.score-guide-panel-title strong{display:block;color:var(--navy);font-size:12px}
+.score-guide-panel-meta{font-size:9px;color:#7e93a2;margin-top:4px}
+.score-guide-panel-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;line-height:2.1;color:#425b6e;margin-top:12px}
+.score-guide-close{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid #dce7ed;border-radius:8px;background:#fff;color:#657d8e;font-size:20px;line-height:1;flex:none}
+.score-guide-close:hover{background:#edf4f8;color:var(--navy)}
+@keyframes scoreGuideReveal{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:700px){.score-guide-library{padding:12px}.score-guide-library-heading{align-items:flex-start}.score-guide-library-heading p{max-width:260px}.score-guide-buttons{gap:6px}.score-guide-button{flex:1 1 calc(50% - 6px);justify-content:flex-start;padding:7px 8px}.score-guide-button-title{font-size:9px}.score-guide-panel{padding:12px}}
+
+/* Floating copy of table headers when a non-report/dashboard page is scrolled vertically. */
+.sticky-table-head-clone{position:fixed;display:none;overflow:hidden;z-index:1005;background:#f0f5f8;border-bottom:1px solid #d9e4eb;box-shadow:0 5px 12px rgba(16,42,67,.10);direction:rtl;pointer-events:none}
+.sticky-table-head-clone table{margin:0!important;border-collapse:separate!important;border-spacing:0!important;table-layout:fixed}
+.sticky-table-head-clone thead th{background:#f0f5f8!important;color:#4e667a;border:0!important;border-bottom:1px solid #e1eaf0!important;font-size:10px;font-weight:900;padding:13px;white-space:normal;overflow-wrap:anywhere}
+.sticky-table-head-clone thead tr{height:auto}

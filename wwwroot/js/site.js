@@ -108,3 +108,126 @@ document.addEventListener("DOMContentLoaded",()=>{document.querySelectorAll("[da
   });
  });
 })();
+
+
+/* Freeze table header rows during vertical scrolling on data-entry/maintenance pages only. */
+(function () {
+    function initFrozenTableHeaders() {
+        if (!document.body.classList.contains("freeze-table-headers")) return;
+
+        const tables = Array.from(document.querySelectorAll(".table-responsive table, .table-scroll table"))
+            .filter(table => table.querySelector("thead") && !table.closest(".modal"));
+        if (!tables.length) return;
+
+        const floating = document.createElement("div");
+        floating.className = "sticky-table-head-clone";
+        floating.setAttribute("aria-hidden", "true");
+        document.body.appendChild(floating);
+
+        let activeTable = null;
+        let activeThead = null;
+        let originalTheadVisibility = "";
+        let cloneTable = null;
+        let scheduled = false;
+
+        function resetActive() {
+            if (activeThead) activeThead.style.visibility = originalTheadVisibility;
+            activeTable = null;
+            activeThead = null;
+            cloneTable = null;
+            floating.replaceChildren();
+            floating.style.display = "none";
+        }
+
+        function updateClone(table, wrapper, top) {
+            const thead = table.querySelector("thead");
+            if (activeTable !== table) {
+                resetActive();
+                activeTable = table;
+                activeThead = thead;
+                originalTheadVisibility = thead.style.visibility;
+                cloneTable = table.cloneNode(false);
+                cloneTable.removeAttribute("id");
+                cloneTable.classList.add("sticky-table-head-copy");
+                cloneTable.style.margin = "0";
+                cloneTable.style.tableLayout = "fixed";
+                const clonedHead = thead.cloneNode(true);
+                clonedHead.querySelectorAll("[id]").forEach(node => node.removeAttribute("id"));
+                cloneTable.appendChild(clonedHead);
+                floating.replaceChildren(cloneTable);
+            }
+
+            const wrapperRect = wrapper.getBoundingClientRect();
+            const tableRect = table.getBoundingClientRect();
+            const headerCells = Array.from(thead.querySelectorAll("th"));
+            const clonedCells = Array.from(cloneTable.querySelectorAll("thead th"));
+            const headerHeight = thead.getBoundingClientRect().height;
+
+            clonedCells.forEach((cell, index) => {
+                if (!headerCells[index]) return;
+                const width = headerCells[index].getBoundingClientRect().width;
+                cell.style.width = width + "px";
+                cell.style.minWidth = width + "px";
+                cell.style.maxWidth = width + "px";
+            });
+
+            cloneTable.style.width = tableRect.width + "px";
+            cloneTable.style.minWidth = tableRect.width + "px";
+            cloneTable.style.maxWidth = "none";
+            cloneTable.style.transform = "translateX(" + (tableRect.left - wrapperRect.left) + "px)";
+            floating.style.top = top + "px";
+            floating.style.left = wrapperRect.left + "px";
+            floating.style.width = wrapper.clientWidth + "px";
+            floating.style.height = headerHeight + "px";
+            floating.style.display = "block";
+            thead.style.visibility = "hidden";
+        }
+
+        function update() {
+            scheduled = false;
+            const topbar = document.querySelector(".app-topbar");
+            const topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
+            let candidate = null;
+
+            for (const table of tables) {
+                if (!table.isConnected) continue;
+                const thead = table.querySelector("thead");
+                const wrapper = table.closest(".table-responsive, .table-scroll") || table.parentElement;
+                if (!thead || !wrapper) continue;
+
+                const tableRect = table.getBoundingClientRect();
+                const wrapperRect = wrapper.getBoundingClientRect();
+                if (tableRect.width <= 0 || tableRect.height <= 0 || wrapperRect.width <= 0) continue;
+                const headerHeight = thead.getBoundingClientRect().height;
+                const stickyTop = Math.max(topbarBottom, wrapperRect.top);
+                if (headerHeight <= 0 || tableRect.top >= stickyTop || tableRect.bottom <= stickyTop + headerHeight ||
+                    wrapperRect.bottom <= stickyTop + headerHeight) continue;
+
+                candidate = { table, wrapper, top: stickyTop };
+                break;
+            }
+
+            if (!candidate) {
+                resetActive();
+                return;
+            }
+            updateClone(candidate.table, candidate.wrapper, candidate.top);
+        }
+
+        function scheduleUpdate() {
+            if (scheduled) return;
+            scheduled = true;
+            window.requestAnimationFrame(update);
+        }
+
+        document.addEventListener("scroll", scheduleUpdate, true);
+        window.addEventListener("resize", scheduleUpdate);
+        window.addEventListener("orientationchange", scheduleUpdate);
+        scheduleUpdate();
+    }
+
+    if (document.readyState === "loading")
+        document.addEventListener("DOMContentLoaded", initFrozenTableHeaders, { once: true });
+    else
+        initFrozenTableHeaders();
+})();

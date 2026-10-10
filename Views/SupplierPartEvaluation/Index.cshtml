@@ -22,6 +22,56 @@ else
         <b>راهنمای امتیازدهی:</b> فقط پارامترهایی که دسترسی آن‌ها برای نقش شما فعال است نمایش داده می‌شوند. هر مقدار بین ۱ تا حداکثر امتیاز همان پارامتر ثبت می‌شود. میانگین همه ارزیابان در جدول فعلی ارزیابی قطعه–تامین‌کننده قرار می‌گیرد.
     </div>
 
+    <section class="score-guide-library mb-3" aria-labelledby="scoreGuideLibraryTitle">
+        <div class="score-guide-library-heading">
+            <div>
+                <h3 id="scoreGuideLibraryTitle"><span aria-hidden="true">▤</span> راهنمای پارامترهای ارزیابی</h3>
+                <p>برای مشاهده روش امتیازدهی، روی عنوان هر پارامتر کلیک کنید. پنل راهنما در همین صفحه باز می‌شود.</p>
+            </div>
+            <span class="score-guide-hint" aria-hidden="true">ⓘ راهنما</span>
+        </div>
+        <div class="score-guide-buttons" role="group" aria-label="انتخاب پارامتر برای مشاهده راهنمای امتیازدهی">
+            @foreach (var p in Model.Parameters)
+            {
+                var guideIcon = p.Type switch
+                {
+                    PaymentParameterType.Time => "◷",
+                    PaymentParameterType.Financial => "◈",
+                    PaymentParameterType.Part => "◆",
+                    PaymentParameterType.Supplier => "♙",
+                    _ => "ⓘ"
+                };
+                <button type="button" class="score-guide-button"
+                        data-score-guide-button
+                        data-guide-id="@p.Id"
+                        data-guide-title="@p.Title"
+                        data-guide-text="@p.ScoringGuide"
+                        data-guide-weight="@p.Weight.ToString("0.##")"
+                        data-guide-max="@p.MaxScore.ToString("0.##")"
+                        data-guide-icon="@guideIcon"
+                        aria-expanded="false"
+                        aria-controls="scoreGuidePanel">
+                    <span class="score-guide-button-icon" aria-hidden="true">@guideIcon</span>
+                    <span class="score-guide-button-title">@p.Title</span>
+                    <span class="score-guide-button-arrow" aria-hidden="true">⌄</span>
+                </button>
+            }
+        </div>
+        <div id="scoreGuidePanel" class="score-guide-panel" hidden>
+            <div class="score-guide-panel-heading">
+                <div class="score-guide-panel-title">
+                    <span id="scoreGuidePanelIcon" class="score-guide-button-icon" aria-hidden="true">ⓘ</span>
+                    <div>
+                        <strong id="scoreGuidePanelTitle"></strong>
+                        <div id="scoreGuidePanelMeta" class="score-guide-panel-meta"></div>
+                    </div>
+                </div>
+                <button type="button" id="scoreGuidePanelClose" class="score-guide-close" aria-label="بستن راهنمای امتیازدهی">×</button>
+            </div>
+            <div id="scoreGuidePanelText" class="score-guide-panel-text"></div>
+        </div>
+    </section>
+
     <div class="table-panel">
         <form class="toolbar" method="get" action="/SupplierPartEvaluation">
             <input class="form-control" name="q" value="@Model.Search" placeholder="جست‌وجوی تامین‌کننده، کد قطعه یا عنوان قطعه...">
@@ -111,3 +161,49 @@ document.addEventListener("DOMContentLoaded",function(){
     window.setInterval(ping,60000);
 });
 </script>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const buttons = Array.from(document.querySelectorAll("[data-score-guide-button]"));
+    const panel = document.getElementById("scoreGuidePanel");
+    if (!buttons.length || !panel) return;
+
+    const panelIcon = document.getElementById("scoreGuidePanelIcon");
+    const panelTitle = document.getElementById("scoreGuidePanelTitle");
+    const panelMeta = document.getElementById("scoreGuidePanelMeta");
+    const panelText = document.getElementById("scoreGuidePanelText");
+    const closeButton = document.getElementById("scoreGuidePanelClose");
+
+    function closePanel() {
+        panel.hidden = true;
+        buttons.forEach(button => {
+            button.setAttribute("aria-expanded", "false");
+            button.classList.remove("is-selected");
+        });
+    }
+
+    buttons.forEach(button => button.addEventListener("click", function () {
+        if (button.getAttribute("aria-expanded") === "true") {
+            closePanel();
+            return;
+        }
+
+        buttons.forEach(item => {
+            item.setAttribute("aria-expanded", "false");
+            item.classList.remove("is-selected");
+        });
+
+        panelIcon.textContent = button.dataset.guideIcon || "ⓘ";
+        panelTitle.textContent = button.dataset.guideTitle || "راهنمای امتیازدهی";
+        panelMeta.textContent = "وزن: " + (button.dataset.guideWeight || "۰") + "٪  |  حداکثر امتیاز: " + (button.dataset.guideMax || "۵");
+        panelText.textContent = (button.dataset.guideText || "").trim() || "برای این پارامتر هنوز راهنمای امتیازدهی ثبت نشده است.";
+        panel.hidden = false;
+        button.setAttribute("aria-expanded", "true");
+        button.classList.add("is-selected");
+    }));
+
+    closeButton?.addEventListener("click", closePanel);
+});
+</script>
+
