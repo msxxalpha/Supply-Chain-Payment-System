@@ -16,6 +16,7 @@
  <div><div class="eyebrow">تحلیل مالی زنجیره تأمین</div><h2>داشبورد و گزارش‌های مالی</h2><p class="text-muted">نمای یکپارچه مطالبات استقراری، مطالبات جاری، پرداخت‌های محاسباتی و پرداخت‌های غیرمحاسباتی با تفکیک نوع.</p></div>
  <div class="export-group">
   @if(User.HasClaim("Permission","Reports.SupplierOverview")){<a class="btn btn-main" href="/SupplierOverview">مرور تامین‌کننده</a>}
+  @if(User.HasClaim("Permission","Reports.PriceListAnalysis")){<a class="btn btn-outline-primary" href="/Reports/PriceTrends">تحلیل فهرست بها و روند قیمت</a>}
   @if(User.HasClaim("Permission","Payment.Calculate")){<a class="btn btn-outline-primary" href="/PaymentWizard">محاسبه جدید</a>}
   @if(User.HasClaim("Permission","Payment.NonCalculated")){<a class="btn btn-outline-primary" href="/NonCalculatedPayment">پرداخت غیرمحاسباتی</a>}
   <a class="btn btn-outline-secondary" href="/PaymentWizard/History">سوابق پرداخت</a>
