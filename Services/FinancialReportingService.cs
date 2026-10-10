@@ -14,6 +14,10 @@ public class FinancialReportingService(AppDbContext db)
 
         var parts = BuildPartRows(context.LatestInvoices, context.ActiveInvoices);
         var totals = BuildPaymentTypeTotals(context.FinancialRuns);
+        var currentMethodValue = await db.SystemParameters.AsNoTracking().Where(x => x.Code == "CURRENT_CLAIM_CALC_METHOD" && x.IsActive).Select(x => (decimal?)x.Value).FirstOrDefaultAsync() ?? 1m;
+        var currentMethod = (CurrentClaimCalculationMethod)(int)currentMethodValue;
+        var priceListPricedReceiptCount = context.FinancialRuns.SelectMany(x => x.Invoices).Count(x => x.DebtCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList && x.PriceListItemId.HasValue);
+        var warehouseSourceRunCount = context.FinancialRuns.Count(x => x.ReceiptSource == PaymentReceiptSource.WarehouseSubsystem);
 
         var original = supplierRows.Sum(x => x.InitialClaim + x.CurrentClaims);
         var paid = supplierRows.Sum(x => x.TotalPaid);
@@ -36,7 +40,84 @@ public class FinancialReportingService(AppDbContext db)
             original, paid, remaining, coverage,
             totals, supplierRows, parts,
             BuildSupplierPartRows(context.LatestInvoices, context.ActiveInvoices),
-            trend);
+            trend, currentMethod, priceListPricedReceiptCount, warehouseSourceRunCount);
+    }
+
+    public async Task<PriceListAnalysisData> GetPriceListAnalysisAsync()
+    {
+        var today = DateTime.Today;
+        var history = await db.SupplierPriceListItems.AsNoTracking()
+            .Include(x => x.SupplierPart).ThenInclude(x => x!.Supplier)
+            .Include(x => x.SupplierPart).ThenInclude(x => x!.Part)
+            .OrderBy(x => x.SupplierPartId)
+            .ThenBy(x => x.ValidFrom)
+            .ThenBy(x => x.Id)
+            .ToListAsync();
+
+        var trends = history
+            .Where(x => x.SupplierPart != null && x.SupplierPart.Supplier != null && x.SupplierPart.Part != null)
+            .GroupBy(x => x.SupplierPartId)
+            .Select(group =>
+            {
+                var ordered = group.OrderBy(x => x.ValidFrom).ThenBy(x => x.Id).ToList();
+                var latest = ordered[^1];
+                var previous = ordered.Count > 1 ? ordered[^2] : null;
+                var delta = previous == null ? 0m : latest.PurchasePrice - previous.PurchasePrice;
+                var percent = previous == null || previous.PurchasePrice == 0
+                    ? 0m
+                    : delta / previous.PurchasePrice * 100m;
+                return new PriceTrendRow(
+                    group.Key,
+                    latest.SupplierPart!.Supplier!.Code,
+                    latest.SupplierPart.Supplier.Title,
+                    latest.SupplierPart.Part!.Code,
+                    latest.SupplierPart.Part.Title,
+                    previous?.PurchasePrice,
+                    latest.PurchasePrice,
+                    delta,
+                    percent,
+                    previous?.ValidFrom,
+                    latest.ValidFrom,
+                    latest.ValidTo,
+                    latest.IsActive,
+                    ordered.Count,
+                    latest.UpdatedAt);
+            })
+            .OrderByDescending(x => Math.Abs(x.ChangePercent))
+            .ThenBy(x => x.SupplierTitle)
+            .ThenBy(x => x.PartCode)
+            .ToList();
+
+        var activeNow = history.Count(x => x.IsActive && x.ValidFrom.Date <= today && x.ValidTo.Date >= today);
+        var compared = trends.Where(x => x.PreviousPrice.HasValue).ToList();
+        var recent = history
+            .Where(x => x.SupplierPart != null && x.SupplierPart.Supplier != null && x.SupplierPart.Part != null)
+            .OrderByDescending(x => x.UpdatedAt)
+            .ThenByDescending(x => x.Id)
+            .Take(100)
+            .Select(x => new PriceListHistoryRow(
+                x.SupplierPart!.Supplier!.Code,
+                x.SupplierPart.Supplier.Title,
+                x.SupplierPart.Part!.Code,
+                x.SupplierPart.Part.Title,
+                x.PurchasePrice,
+                x.ValidFrom,
+                x.ValidTo,
+                x.IsActive,
+                x.UpdatedAt))
+            .ToList();
+
+        return new PriceListAnalysisData(
+            history.Count,
+            activeNow,
+            history.Select(x => x.SupplierPart?.SupplierId).Where(x => x.HasValue).Select(x => x!.Value).Distinct().Count(),
+            history.Select(x => x.SupplierPart?.PartId).Where(x => x.HasValue).Select(x => x!.Value).Distinct().Count(),
+            compared.Count(x => x.ChangeAmount > 0),
+            compared.Count(x => x.ChangeAmount < 0),
+            compared.Count(x => x.ChangeAmount == 0),
+            compared.Count > 0 ? compared.Average(x => x.ChangePercent) : 0m,
+            trends,
+            recent);
     }
 
     public async Task<SupplierDashboardData?> GetSupplierAsync(int supplierId)
@@ -93,7 +174,7 @@ public class FinancialReportingService(AppDbContext db)
                     .Where(x => ids.Contains(x.PaymentKeyHash))
                     .Sum(CurrentAllocation);
 
-                var originalForPart = g.Sum(x => x.OriginalDebt);
+                var originalForPart = g.Sum(x => x.OriginalDebt + x.PriceAdjustmentTotal);
                 var remainingForPart = g.Sum(CurrentRemaining);
                 return new SupplierPartFinanceRow(
                     supplier.Title, g.Key.PartTitle, g.Count(x => CurrentRemaining(x) > 0),
@@ -167,6 +248,31 @@ public class FinancialReportingService(AppDbContext db)
             .GroupBy(x => x.PaymentKeyHash)
             .Select(g => g.Last())
             .ToList();
+        var latestInvoiceIds = latestInvoices.Select(x => x.Id).Distinct().ToList();
+        var priceAdjustments = latestInvoiceIds.Count == 0
+            ? new List<SupplierPriceDebtAdjustment>()
+            : await db.SupplierPriceDebtAdjustments.AsNoTracking()
+                .Where(x => x.PaymentRunInvoiceId.HasValue && latestInvoiceIds.Contains(x.PaymentRunInvoiceId.Value))
+                .ToListAsync();
+        var adjustmentByInvoice = priceAdjustments.GroupBy(x => x.PaymentRunInvoiceId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.AmountChange));
+        foreach (var invoice in latestInvoices)
+            invoice.PriceAdjustmentTotal = adjustmentByInvoice.GetValueOrDefault(invoice.Id);
+
+        foreach (var supplierGroup in latestInvoices.Where(x => x.SupplierId.HasValue).GroupBy(x => x.SupplierId!.Value))
+        {
+            var credit = supplierGroup.Sum(x => Math.Min(0m,
+                x.RemainingDebt + x.PriceAdjustmentTotal - CurrentAllocation(x))) * -1m;
+            foreach (var invoice in supplierGroup.Where(x => x.RemainingDebt + x.PriceAdjustmentTotal - CurrentAllocation(x) > 0)
+                         .OrderBy(x => x.ReceiptDate).ThenBy(x => x.Id))
+            {
+                if (credit <= 0) break;
+                var available = invoice.RemainingDebt + invoice.PriceAdjustmentTotal - CurrentAllocation(invoice);
+                var offset = Math.Min(credit, available);
+                invoice.PriceCreditOffset = offset;
+                credit -= offset;
+            }
+        }
 
         var suppliers = await db.Suppliers.AsNoTracking()
             .Where(x => x.IsActive)
@@ -263,7 +369,7 @@ public class FinancialReportingService(AppDbContext db)
             var overdue = group.Count(x => CurrentRemaining(x) > 0 &&
                 x.ContractSettlementDays > 0 &&
                 x.DebtAgeDays > x.ContractSettlementDays);
-            var original = group.Sum(x => x.OriginalDebt);
+            var original = group.Sum(x => x.OriginalDebt + x.PriceAdjustmentTotal);
 
             result.Add(new PartFinanceRow(
                 group.Key.PartId ?? 0, group.Key.PartTitle, open,
@@ -426,7 +532,7 @@ public class FinancialReportingService(AppDbContext db)
             : x.AllocatedInitialClaimAmount > 0 ? 0 : x.AllocatedAmount;
 
     static decimal CurrentRemaining(PaymentRunInvoice x) =>
-        Math.Max(0, x.RemainingDebt - CurrentAllocation(x));
+        Math.Max(0, x.RemainingDebt + x.PriceAdjustmentTotal - CurrentAllocation(x) - x.PriceCreditOffset);
 
     record ReportingContext(
         List<PaymentRun> WorkflowRuns,
@@ -436,6 +542,52 @@ public class FinancialReportingService(AppDbContext db)
         List<Supplier> Suppliers);
 }
 
+public record PriceListAnalysisData(
+    int TotalRecords,
+    int ActiveNowCount,
+    int SupplierCount,
+    int PartCount,
+    int IncreasedCount,
+    int DecreasedCount,
+    int UnchangedCount,
+    decimal AverageChangePercent,
+    List<PriceTrendRow> Trends,
+    List<PriceListHistoryRow> RecentHistory,
+    int FilteredTrendCount = 0,
+    int Page = 1,
+    int PageSize = 25,
+    string Search = "",
+    string ChangeType = "",
+    string Status = "");
+
+public record PriceTrendRow(
+    int SupplierPartId,
+    string SupplierCode,
+    string SupplierTitle,
+    string PartCode,
+    string PartTitle,
+    decimal? PreviousPrice,
+    decimal LatestPrice,
+    decimal ChangeAmount,
+    decimal ChangePercent,
+    DateTime? PreviousValidFrom,
+    DateTime LatestValidFrom,
+    DateTime LatestValidTo,
+    bool LatestActive,
+    int HistoryCount,
+    DateTime UpdatedAt);
+
+public record PriceListHistoryRow(
+    string SupplierCode,
+    string SupplierTitle,
+    string PartCode,
+    string PartTitle,
+    decimal PurchasePrice,
+    DateTime ValidFrom,
+    DateTime ValidTo,
+    bool IsActive,
+    DateTime UpdatedAt);
+
 public record FinancialDashboardData(
     int RunCount, int PaymentOrderedRuns, int ApprovedRuns,
     decimal Original, decimal TotalPaid, decimal Remaining, decimal Coverage,
@@ -443,7 +595,10 @@ public record FinancialDashboardData(
     List<SupplierFinanceRow> Suppliers,
     List<PartFinanceRow> Parts,
     List<SupplierPartFinanceRow> SupplierParts,
-    List<FinancialRunRow> Trend);
+    List<FinancialRunRow> Trend,
+    CurrentClaimCalculationMethod CurrentClaimCalculationMethod,
+    int PriceListPricedReceiptCount,
+    int WarehouseSourceRunCount);
 
 public record PaymentTypeTotals(
     decimal Calculated, decimal Cash, decimal Check, decimal Vehicle,

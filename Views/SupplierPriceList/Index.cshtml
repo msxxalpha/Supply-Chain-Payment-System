@@ -1,0 +1,94 @@
+@model Indamin.Payment.Controllers.SupplierPriceListController.SupplierPriceListIndexVm
+@{
+    ViewData["Title"] = "مدیریت فهرست بها تامین‌کنندگان";
+    var totalPages = Math.Max(1, (int)Math.Ceiling(Model.TotalCount / (double)Model.PageSize));
+}
+<div class="page-header">
+    <div>
+        <div class="eyebrow">اطلاعات پایه</div>
+        <h2>مدیریت فهرست بها تامین‌کنندگان</h2>
+        <p class="text-muted">برای هر تامین‌کننده، کالاهای مرتبط را بررسی و بازه‌های زمانی قیمت خرید را مدیریت کنید.</p>
+    </div>
+    <div class="export-group">
+        <a class="btn btn-outline-primary" href="/SupplierPriceList/ExportExcel">خروجی Excel</a>
+        @if (User.HasClaim("IsAdmin","1"))
+        {
+            <button class="btn btn-main" type="button" data-bs-toggle="modal" data-bs-target="#priceImportModal">ورود تجمیعی Excel</button>
+        }
+    </div>
+</div>
+
+<div class="info-box mb-3">
+    <b>قاعده انتخاب نرخ:</b> هم‌پوشانی بازه‌های قیمت مجاز است. در محاسبه، از میان قیمت‌هایی که تاریخ رسید در بازه اعتبار آن‌ها قرار دارد، رکوردی با آخرین تاریخ شروع و در صورت برابری، شناسه بالاتر انتخاب می‌شود. نرخ استفاده‌شده در هر محاسبه به‌صورت Snapshot روی رسید ذخیره می‌شود.
+</div>
+
+<div class="table-panel">
+    <div class="toolbar">
+        <form method="get" action="/SupplierPriceList" class="d-flex gap-2 w-100">
+            <input class="form-control" name="q" value="@Model.Search" placeholder="جست‌وجوی کد یا نام تامین‌کننده...">
+            <select class="form-select page-size-select" name="pageSize" onchange="this.form.submit()">
+                <option value="25" selected="@(Model.PageSize==25)">25 ردیف</option>
+                <option value="50" selected="@(Model.PageSize==50)">50 ردیف</option>
+                <option value="75" selected="@(Model.PageSize==75)">75 ردیف</option>
+                <option value="100" selected="@(Model.PageSize==100)">100 ردیف</option>
+            </select>
+            <button class="btn btn-outline-primary" type="submit">جست‌وجو</button>
+        </form>
+    </div>
+    @await Html.PartialAsync("_TablePagination", (Model.Page, totalPages, Model.PageSize, Model.Search ?? "", "/SupplierPriceList"))
+    <div class="table-responsive">
+        <table class="table modern-table">
+            <thead><tr><th>کد</th><th>تامین‌کننده</th><th>تعداد کالاهای مرتبط</th><th>عملیات</th></tr></thead>
+            <tbody>
+            @foreach (var x in Model.Rows)
+            {
+                <tr>
+                    <td>@x.Code</td>
+                    <td class="fw-bold">@x.Title</td>
+                    <td>@x.LinkedPartCount</td>
+                    <td><a class="btn btn-sm btn-main" href="/SupplierPriceList/Manage?supplierId=@x.SupplierId">مدیریت فهرست بها</a></td>
+                </tr>
+            }
+            @if (Model.Rows.Count == 0)
+            {
+                <tr><td colspan="4" class="text-center text-muted py-4">تامین‌کننده‌ای برای نمایش وجود ندارد.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    @await Html.PartialAsync("_TablePagination", (Model.Page, totalPages, Model.PageSize, Model.Search ?? "", "/SupplierPriceList"))
+</div>
+
+@if (User.HasClaim("IsAdmin","1"))
+{
+<div class="modal fade" id="priceImportModal" tabindex="-1" aria-labelledby="priceImportLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header">
+                <div><h5 class="modal-title" id="priceImportLabel">ورود تجمیعی فهرست بها از Excel</h5><div class="subtle mt-1">یک فایل برای همه کالا–تامین‌کنندگان</div></div>
+                <button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal" aria-label="بستن"></button>
+            </div>
+            <form method="post" action="/SupplierPriceList/ImportExcel" enctype="multipart/form-data">
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+                    <label class="form-label">فایل Excel</label>
+                    <input class="form-control" type="file" name="file" accept=".xlsx,.xls" required>
+                    <div class="excel-column-guide price-excel-guide mt-3">
+                        <h5>راهنمای ترتیب ستون‌های فایل Excel فهرست بها</h5>
+                        <div class="guide-columns">
+                            <div class="guide-col"><b><span class="num">۱</span>کد تامین کننده</b><small>الزامی؛ باید در اطلاعات پایه تامین‌کنندگان وجود داشته باشد. نمونه: SUP-001</small></div>
+                            <div class="guide-col"><b><span class="num">۲</span>کد قطعه</b><small>الزامی؛ باید در اطلاعات پایه کالاها وجود داشته باشد و با همان تامین‌کننده ارتباط داشته باشد.</small></div>
+                            <div class="guide-col"><b><span class="num">۳</span>قیمت خرید (فی)</b><small>قیمت هر واحد؛ عددی بزرگ‌تر از صفر، با امکان ثبت اعشار.</small></div>
+                            <div class="guide-col"><b><span class="num">۴</span>تاریخ شروع</b><small>تاریخ شروع اعتبار قیمت به تقویم شمسی؛ نمونه: ۱۴۰۵/۰۱/۰۱</small></div>
+                            <div class="guide-col"><b><span class="num">۵</span>تاریخ پایان</b><small>تاریخ پایان اعتبار قیمت به تقویم شمسی و نباید قبل از تاریخ شروع باشد.</small></div>
+                        </div>
+                        <div class="form-hint mt-2">ردیف اول فایل باید دقیقاً عنوان ستون‌ها را داشته باشد. تعریف بازه‌های زمانی هم‌پوشان مجاز است؛ در محاسبات، آخرین قیمت منطبق با تاریخ رسید ملاک خواهد بود.</div>
+                    </div>
+                    <div class="info-box mt-3">ورود فایل اتمیک است؛ اگر حتی یک ردیف خطای ساختاری، کالا/تامین‌کننده نامعتبر یا ارتباط فعال نداشته باشد، هیچ ردیفی از فایل ذخیره نمی‌شود.</div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">انصراف</button><button class="btn btn-main">ورود فهرست بها</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+}

@@ -14,6 +14,7 @@
    @if(User.HasClaim("Permission","Payment.Calculate")){<a class="btn btn-main btn-lg" href="/PaymentWizard">محاسبه و تخصیص پرداخت</a>}
    @if(User.HasClaim("Permission","Payment.NonCalculated")){<a class="btn btn-light-outline btn-lg" href="/NonCalculatedPayment">پرداخت غیرمحاسباتی</a>}
    @if(User.HasClaim("Permission","Reports.View")){<a class="btn btn-light-outline btn-lg" href="/Reports">گزارش‌های مالی</a>}
+   @if(User.HasClaim("Permission","Reports.PriceListAnalysis")){<a class="btn btn-light-outline btn-lg" href="/Reports/PriceTrends">تحلیل فهرست بها و روند قیمت</a>}
   </div>
  </div>
  <div class="hero-visual"><div class="visual-ring ring-one"></div><div class="visual-ring ring-two"></div><div class="visual-core"><span class="core-bar h1"></span><span class="core-bar h2"></span><span class="core-bar h3"></span><span class="core-bar h4"></span></div></div>
@@ -26,6 +27,8 @@
  <div class="payment-kpi"><span>تخصیص از محاسبات</span><strong>@Model.PaymentTypes.Calculated.ToString("N0")</strong><small>@((Model.PaymentTypes.GrandTotal>0?Model.PaymentTypes.Calculated/Model.PaymentTypes.GrandTotal*100:0).ToString("0.0"))٪ از کل پرداخت</small></div>
  <div class="payment-kpi"><span>پرداخت غیرمحاسباتی</span><strong>@Model.PaymentTypes.NonCalculatedTotal.ToString("N0")</strong><small>@Model.PaymentOrderedRuns نوبت دستورپرداخت‌شده</small></div>
 </div>
+
+<div class="form-panel mt-3"><div class="panel-title"><div><h4>مبنای محاسبه مطالبات جاری</h4><span>تنظیم فعال سیستم و وضعیت استفاده از فهرست بها</span></div><span class="validation-chip validation-ok">@((Model.CurrentClaimCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList)?"تعدادی بر اساس فهرست بها":"دریافت اطلاعات ریالی")</span></div><div class="supplier-debt-cards"><div><span>روش فعال</span><b>@((Model.CurrentClaimCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList)?"تعدادی بر اساس فهرست بها":"دریافت اطلاعات ریالی")</b></div><div><span>رسیدهای محاسبه‌شده با فهرست بها</span><b>@Model.PriceListPricedReceiptCount.ToString("N0")</b></div><div><span>نوبت‌های دریافت مستقیم از انبار</span><b>@Model.WarehouseSourceRunCount.ToString("N0")</b></div><div><span>فهرست بها</span><b>@if(User.HasClaim("Permission","Setup.SupplierPriceList")){<a href="/SupplierPriceList">مدیریت</a>}else{<span>—</span>}</b></div></div></div>
 
 <div class="row g-3 mt-1">
  <div class="col-xl-7">

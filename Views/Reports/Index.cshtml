@@ -16,6 +16,7 @@
  <div><div class="eyebrow">تحلیل مالی زنجیره تأمین</div><h2>داشبورد و گزارش‌های مالی</h2><p class="text-muted">نمای یکپارچه مطالبات استقراری، مطالبات جاری، پرداخت‌های محاسباتی و پرداخت‌های غیرمحاسباتی با تفکیک نوع.</p></div>
  <div class="export-group">
   @if(User.HasClaim("Permission","Reports.SupplierOverview")){<a class="btn btn-main" href="/SupplierOverview">مرور تامین‌کننده</a>}
+  @if(User.HasClaim("Permission","Reports.PriceListAnalysis")){<a class="btn btn-outline-primary" href="/Reports/PriceTrends">تحلیل فهرست بها و روند قیمت</a>}
   @if(User.HasClaim("Permission","Payment.Calculate")){<a class="btn btn-outline-primary" href="/PaymentWizard">محاسبه جدید</a>}
   @if(User.HasClaim("Permission","Payment.NonCalculated")){<a class="btn btn-outline-primary" href="/NonCalculatedPayment">پرداخت غیرمحاسباتی</a>}
   <a class="btn btn-outline-secondary" href="/PaymentWizard/History">سوابق پرداخت</a>
@@ -28,6 +29,8 @@
  <div class="payment-kpi"><span>تخصیص از محل محاسبات</span><strong>@Model.PaymentTypes.Calculated.ToString("N0")</strong><small>پرداخت محاسباتی</small></div>
  <div class="payment-kpi"><span>کل پرداخت غیرمحاسباتی</span><strong>@Model.PaymentTypes.NonCalculatedTotal.ToString("N0")</strong><small>شش نوع پرداخت غیرمحاسباتی</small></div>
 </div>
+
+<div class="form-panel mt-3"><div class="panel-title"><div><h4>مبنای محاسبه مطالبات جاری</h4><span>اطلاعات مؤثر در داشبورد مالی</span></div><span class="priority-pill">@((Model.CurrentClaimCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList)?"فهرست بها":"ریالی")</span></div><div class="supplier-debt-cards"><div><span>روش فعال</span><b>@((Model.CurrentClaimCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList)?"تعدادی بر اساس فهرست بها":"دریافت اطلاعات ریالی")</b></div><div><span>رسیدهای قیمت‌گذاری‌شده</span><b>@Model.PriceListPricedReceiptCount.ToString("N0")</b></div><div><span>نوبت‌های منبع انبار</span><b>@Model.WarehouseSourceRunCount.ToString("N0")</b></div></div></div>
 
 <div class="row g-3 mt-1">
  <div class="col-xl-7">

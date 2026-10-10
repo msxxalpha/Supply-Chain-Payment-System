@@ -1,0 +1,81 @@
+@model Indamin.Payment.Controllers.DataMaintenanceController.DataMaintenanceVm
+@{
+    ViewData["Title"] = "پاک‌سازی اطلاعات عملیاتی";
+}
+<div class="page-header">
+    <div>
+        <div class="eyebrow">ابزارهای مدیر سامانه</div>
+        <h2>پاک‌سازی کامل اطلاعات عملیاتی</h2>
+        <p class="text-muted">حذف فیزیکی رکوردها از دیتابیس؛ اطلاعات پایه، تنظیمات، کاربران و نقش‌ها حذف نمی‌شوند.</p>
+    </div>
+</div>
+<div class="alert alert-danger border-0 shadow-sm">
+    <strong>هشدار جدی:</strong> این عملیات دائمی است و بازیابی آن از داخل سامانه امکان‌پذیر نیست. پیش از ادامه، از دیتابیس نسخه پشتیبان تهیه کنید.
+    در عملیات‌های جداگانه پایین، اطلاعات پایه حفظ می‌شود؛ اما گزینه «پاک‌سازی یکپارچه اطلاعات آزمایشی» عمداً کالاها، تامین‌کنندگان، ارتباط‌ها و ارزیابی‌های مربوط را نیز حذف می‌کند.
+</div>
+<div class="form-panel mb-3 border border-danger">
+    <div class="panel-title">
+        <div>
+            <h4>پاک‌سازی یکپارچه اطلاعات آزمایشی</h4>
+            <span>برای پایان تست و آماده‌سازی سامانه جهت ورود اطلاعات واقعی</span>
+        </div>
+        <span class="validation-chip">@Model.Parts.ToString("N0") کالا · @Model.Suppliers.ToString("N0") تامین‌کننده</span>
+    </div>
+    <p>این گزینه در یک تراکنش، تمام کالاها، تامین‌کنندگان، ارتباط‌های قطعه–تامین‌کننده، امتیازهای ثبت‌شده توسط ارزیابان، میانگین‌های ارزیابی و فهرست بهای متصل به ارتباط‌ها را حذف می‌کند. برای رعایت وابستگی‌های دیتابیس، تمام محاسبات و پرداخت‌های آزمایشی و ریزرکوردهای وابسته و نیز تاریخچه مطالبات تامین‌کنندگان هم حذف می‌شوند.</p>
+    <div class="row g-2 mb-3">
+        <div class="col-md-4"><div class="small text-muted">ارتباط قطعه–تامین‌کننده</div><strong>@Model.SupplierParts.ToString("N0")</strong></div>
+        <div class="col-md-4"><div class="small text-muted">نتایج میانگین ارزیابی</div><strong>@Model.SupplierPartEvaluations.ToString("N0")</strong></div>
+        <div class="col-md-4"><div class="small text-muted">امتیازهای ارزیابان</div><strong>@Model.SupplierPartAssessorEvaluations.ToString("N0")</strong></div>
+        <div class="col-md-4"><div class="small text-muted">اقلام فهرست بها</div><strong>@Model.SupplierPriceListItems.ToString("N0")</strong></div>
+        <div class="col-md-4"><div class="small text-muted">محاسبات موجود</div><strong>@Model.CalculatedRuns.ToString("N0")</strong></div>
+        <div class="col-md-4"><div class="small text-muted">پرداخت‌های غیرمحاسباتی</div><strong>@Model.NonCalculatedRuns.ToString("N0")</strong></div>
+    </div>
+    <div class="alert alert-warning mb-3">
+        تنظیمات سامانه، پارامترهای پرداخت و سیستم، سایر اطلاعات پایه، کاربران، نقش‌ها، مجوزها، کوئری‌های منبع، گزارش رویدادها و سوابق نشست کاربران حذف نمی‌شوند. این کار فقط رکوردها را پاک می‌کند و ساختار جداول را تغییر نمی‌دهد.
+    </div>
+    <form method="post" action="/DataMaintenance/DeleteSection" onsubmit="return confirm('این کار تمام اطلاعات آزمایشی کالا، تامین‌کننده، ارزیابی و پرداخت را برای همیشه حذف می‌کند. ادامه می‌دهید؟');">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="section" value="reset-test-data" />
+        <label class="form-label">برای تایید این عملیات، عبارت «پاک‌سازی کامل اطلاعات آزمایشی» را دقیقاً وارد کنید.</label>
+        <input class="form-control mb-3" name="confirmation" required autocomplete="off" placeholder="پاک‌سازی کامل اطلاعات آزمایشی" />
+        <button class="btn btn-danger" type="submit">حذف همه اطلاعات آزمایشی و آماده‌سازی برای ورود اطلاعات واقعی</button>
+    </form>
+</div>
+<div class="form-panel mb-3">
+    <div class="panel-title"><div><h4>ترتیب پیشنهادی پاک‌سازی</h4><span>اگر چند بخش را پاک می‌کنید، ابتدا سوابق پرداخت و سپس سوابق مستقل را پاک‌سازی کنید.</span></div></div>
+    <ol class="mb-0">
+        <li>محاسبات و پرداخت‌های محاسباتی</li>
+        <li>پرداخت‌های غیرمحاسباتی</li>
+        <li>سوابق تغییر مطالبات تامین‌کنندگان</li>
+        <li>امتیازهای ارزیابان و سوابق نشست کاربران</li>
+        <li>گزارش رویدادها و عملیات سیستم</li>
+    </ol>
+    <div class="form-hint mt-3">جزئیات وابسته، ریزرسیدها، امتیازهای ریز، خلاصه تامین‌کنندگان و snapshotهای پارامترها به ترتیب سازگار با کلیدهای خارجی حذف می‌شوند.</div>
+</div>
+<div class="row g-3">
+    <div class="col-xl-6"><div class="form-panel h-100">
+        <div class="panel-title"><div><h4>محاسبات و پرداخت‌های محاسباتی</h4><span>محاسبات، تاییدها، ریزرسیدها و جزئیات وابسته</span></div><span class="validation-chip">@Model.CalculatedRuns.ToString("N0") محاسبه</span></div>
+        <p class="text-muted small">تمام رکوردهای محاسباتی، شامل پیش‌نویس، تاییدشده، دستور پرداخت‌شده و حذف منطقی‌شده، فیزیکی حذف می‌شوند.</p>
+        <form method="post" action="/DataMaintenance/DeleteSection" class="mt-3">@Html.AntiForgeryToken()<input type="hidden" name="section" value="calculated-payments" /><label class="form-label">برای تایید، عبارت «حذف کامل» را وارد کنید.</label><input class="form-control mb-3" name="confirmation" required autocomplete="off" placeholder="حذف کامل" /><button class="btn btn-danger" type="submit">حذف تمام محاسبات</button></form>
+    </div></div>
+    <div class="col-xl-6"><div class="form-panel h-100">
+        <div class="panel-title"><div><h4>پرداخت‌های غیرمحاسباتی</h4><span>پرداخت‌ها و ردیف‌های ثبت‌شده</span></div><span class="validation-chip">@Model.NonCalculatedRuns.ToString("N0") پرداخت</span></div>
+        <p class="text-muted small">تمام پرداخت‌های غیرمحاسباتی و ردیف‌های تامین‌کنندگان، خلاصه‌ها و سوابق وابسته حذف می‌شوند.</p>
+        <form method="post" action="/DataMaintenance/DeleteSection" class="mt-3">@Html.AntiForgeryToken()<input type="hidden" name="section" value="non-calculated-payments" /><label class="form-label">برای تایید، عبارت «حذف کامل» را وارد کنید.</label><input class="form-control mb-3" name="confirmation" required autocomplete="off" placeholder="حذف کامل" /><button class="btn btn-danger" type="submit">حذف تمام پرداخت‌های غیرمحاسباتی</button></form>
+    </div></div>
+    <div class="col-xl-6"><div class="form-panel h-100">
+        <div class="panel-title"><div><h4>سوابق تغییر مطالبات تامین‌کنندگان</h4><span>تاریخچه تغییرات مطالبات</span></div><span class="validation-chip">@Model.ClaimHistories.ToString("N0") رکورد</span></div>
+        <p class="text-muted small">تمام تاریخچه مطالبات حذف می‌شود؛ مبلغ پایه ثبت‌شده در اطلاعات تامین‌کننده تغییر نمی‌کند.</p>
+        <form method="post" action="/DataMaintenance/DeleteSection" class="mt-3">@Html.AntiForgeryToken()<input type="hidden" name="section" value="claim-history" /><label class="form-label">برای تایید، عبارت «حذف کامل» را وارد کنید.</label><input class="form-control mb-3" name="confirmation" required autocomplete="off" placeholder="حذف کامل" /><button class="btn btn-danger" type="submit">حذف تاریخچه مطالبات</button></form>
+    </div></div>
+    <div class="col-xl-6"><div class="form-panel h-100">
+        <div class="panel-title"><div><h4>امتیازها و فعالیت ارزیابان</h4><span>امتیازهای ثبت‌شده و سوابق نشست کاربران</span></div><span class="validation-chip">@((Model.AssessorScores + Model.ActivitySessions).ToString("N0")) رکورد</span></div>
+        <p class="text-muted small">امتیازهای ارزیابان و تاریخچه ورود، آخرین فعالیت و خروج کاربران حذف می‌شوند. اطلاعات کاربران باقی می‌ماند.</p>
+        <form method="post" action="/DataMaintenance/DeleteSection" class="mt-3">@Html.AntiForgeryToken()<input type="hidden" name="section" value="assessor-activity" /><label class="form-label">برای تایید، عبارت «حذف کامل» را وارد کنید.</label><input class="form-control mb-3" name="confirmation" required autocomplete="off" placeholder="حذف کامل" /><button class="btn btn-danger" type="submit">حذف امتیازها و فعالیت‌ها</button></form>
+    </div></div>
+    <div class="col-xl-6"><div class="form-panel h-100">
+        <div class="panel-title"><div><h4>گزارش رویدادها و عملیات سیستم</h4><span>حذف کامل Audit Log</span></div><span class="validation-chip">@Model.AuditLogs.ToString("N0") رکورد</span></div>
+        <p class="text-muted small">تمام سوابق ثبت‌شده از عملیات سیستم حذف می‌شود؛ قابلیت ثبت رویدادها و ساختار دیتابیس باقی می‌ماند.</p>
+        <form method="post" action="/DataMaintenance/DeleteSection" class="mt-3">@Html.AntiForgeryToken()<input type="hidden" name="section" value="audit-logs" /><label class="form-label">برای تایید، عبارت «حذف کامل» را وارد کنید.</label><input class="form-control mb-3" name="confirmation" required autocomplete="off" placeholder="حذف کامل" /><button class="btn btn-danger" type="submit">حذف تمام گزارش رویدادها</button></form>
+    </div></div>
+</div>

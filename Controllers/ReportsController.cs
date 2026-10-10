@@ -2,15 +2,194 @@ using Indamin.Payment.Data;
 using Indamin.Payment.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Indamin.Payment.Controllers;
 
-[Authorize(Policy = SecurityPermissions.ReportsView)]
-public class ReportsController(FinancialReportingService reports) : Controller
+[Authorize]
+public class ReportsController(FinancialReportingService reports, AppDbContext db) : Controller
 {
+    [Authorize(Policy = SecurityPermissions.ReportsView)]
     public async Task<IActionResult> Index()
     {
         var data = await reports.GetDashboardAsync();
         return View(data);
     }
+
+    [Authorize(Policy = SecurityPermissions.PriceListAnalysis)]
+    public async Task<IActionResult> PriceTrends(string? q, string? changeType, string? status, int page = 1, int pageSize = 25)
+    {
+        pageSize = pageSize is 50 or 75 or 100 ? pageSize : 25;
+        page = Math.Max(1, page);
+        q = (q ?? "").Trim();
+        changeType = (changeType ?? "").Trim().ToLowerInvariant();
+        status = (status ?? "").Trim().ToLowerInvariant();
+
+        var data = await reports.GetPriceListAnalysisAsync();
+        var filtered = data.Trends.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(q))
+            filtered = filtered.Where(x =>
+                x.SupplierCode.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                x.SupplierTitle.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                x.PartCode.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                x.PartTitle.Contains(q, StringComparison.OrdinalIgnoreCase));
+        filtered = changeType switch
+        {
+            "increase" => filtered.Where(x => x.ChangeAmount > 0),
+            "decrease" => filtered.Where(x => x.ChangeAmount < 0),
+            "unchanged" => filtered.Where(x => x.ChangeAmount == 0),
+            _ => filtered
+        };
+        var today = DateTime.Today;
+        filtered = status switch
+        {
+            "active" => filtered.Where(x => x.LatestActive && x.LatestValidFrom.Date <= today && x.LatestValidTo.Date >= today),
+            "inactive" => filtered.Where(x => !x.LatestActive),
+            "expired" => filtered.Where(x => x.LatestActive && (x.LatestValidFrom.Date > today || x.LatestValidTo.Date < today)),
+            _ => filtered
+        };
+
+        var allFiltered = filtered.ToList();
+        var totalPages = Math.Max(1, (int)Math.Ceiling(allFiltered.Count / (double)pageSize));
+        page = Math.Min(page, totalPages);
+        var paged = allFiltered.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        return View(data with
+        {
+            Trends = paged,
+            FilteredTrendCount = allFiltered.Count,
+            Page = page,
+            PageSize = pageSize,
+            Search = q,
+            ChangeType = changeType,
+            Status = status
+        });
+    }
+
+    [Authorize(Policy = SecurityPermissions.PriceListAnalysis)]
+    [HttpGet]
+    public async Task<IActionResult> PriceHistory(int supplierPartId)
+    {
+        if (supplierPartId <= 0) return BadRequest();
+        var mapping = await db.SupplierParts.AsNoTracking()
+            .Include(x => x.Supplier).Include(x => x.Part)
+            .SingleOrDefaultAsync(x => x.Id == supplierPartId);
+        if (mapping?.Supplier == null || mapping.Part == null) return NotFound();
+
+        var rows = await db.SupplierPriceListItems.AsNoTracking()
+            .Where(x => x.SupplierPartId == supplierPartId)
+            .OrderBy(x => x.ValidFrom).ThenBy(x => x.Id)
+            .Select(x => new
+            {
+                x.Id,
+                x.PurchasePrice,
+                ValidFrom = x.ValidFrom,
+                ValidTo = x.ValidTo,
+                x.IsActive,
+                x.UpdatedAt
+            }).ToListAsync();
+
+        return Json(new
+        {
+            supplierTitle = mapping.Supplier.Title,
+            supplierCode = mapping.Supplier.Code,
+            partTitle = mapping.Part.Title,
+            partCode = mapping.Part.Code,
+            history = rows.Select(x => new
+            {
+                x.Id,
+                x.PurchasePrice,
+                validFrom = PersianDateService.ToJalali(x.ValidFrom),
+                validTo = PersianDateService.ToJalali(x.ValidTo),
+                validFromIso = x.ValidFrom.ToString("yyyy-MM-dd"),
+                x.IsActive,
+                updatedAt = PersianDateService.ToJalali(x.UpdatedAt.ToLocalTime())
+            })
+        });
+    }
+
+    [Authorize(Policy = SecurityPermissions.AssessorPerformance)]
+    public async Task<IActionResult> AssessorPerformance(string? from, string? to)
+    {
+        DateTime? fromDate;
+        DateTime? toDate;
+        try
+        {
+            fromDate = string.IsNullOrWhiteSpace(from) ? null : PersianDateService.Parse(from).Date;
+            toDate = string.IsNullOrWhiteSpace(to) ? null : PersianDateService.Parse(to).Date;
+            if (fromDate.HasValue && toDate.HasValue && fromDate.Value.Date > toDate.Value.Date)
+                throw new ArgumentException("تاریخ شروع نباید بعد از تاریخ پایان باشد.");
+        }
+        catch (ArgumentException ex)
+        {
+            TempData["Error"] = ex.Message;
+            return RedirectToAction(nameof(AssessorPerformance));
+        }
+
+        var start = fromDate?.Date.ToUniversalTime();
+        var end = toDate?.Date.AddDays(1).ToUniversalTime();
+
+        var sessionsQuery = db.UserActivitySessions.AsNoTracking()
+            .Include(x => x.User)
+            .Where(x => x.RoleCode == "SUPPLIER_PART_ASSESSOR");
+        if (start.HasValue) sessionsQuery = sessionsQuery.Where(x => x.LoginAtUtc >= start.Value);
+        if (end.HasValue) sessionsQuery = sessionsQuery.Where(x => x.LoginAtUtc < end.Value);
+
+        var sessions = await sessionsQuery.OrderByDescending(x => x.LoginAtUtc).ToListAsync();
+        var scoreQuery = db.SupplierPartAssessorEvaluations.AsNoTracking()
+            .Include(x => x.AssessorUser)
+            .Include(x => x.SupplierPart).ThenInclude(x => x!.Supplier)
+            .Include(x => x.SupplierPart).ThenInclude(x => x!.Part)
+            .Include(x => x.PaymentParameter).AsQueryable();
+        if (start.HasValue) scoreQuery = scoreQuery.Where(x => x.UpdatedAt >= start.Value);
+        if (end.HasValue) scoreQuery = scoreQuery.Where(x => x.UpdatedAt < end.Value);
+        var scores = await scoreQuery.ToListAsync();
+
+        var assessorIds = sessions.Select(x => x.UserId).Concat(scores.Select(x => x.AssessorUserId)).Distinct().ToHashSet();
+        var sessionRows = sessions.GroupBy(x => x.UserId).ToDictionary(g => g.Key, g => new
+        {
+            Count = g.Count(),
+            Seconds = g.Sum(s => s.LogoutAtUtc.HasValue
+                ? Math.Max(0, s.DurationSeconds)
+                : Math.Max(Math.Max(0, s.DurationSeconds), (int)Math.Min(int.MaxValue, Math.Max(0, (s.LastSeenAtUtc - s.LoginAtUtc).TotalSeconds)))),
+            LastSeen = g.Max(s => s.LastSeenAtUtc),
+            Active = g.Any(s => !s.LogoutAtUtc.HasValue)
+        });
+        var scoreRows = scores.GroupBy(x => x.AssessorUserId).ToDictionary(g => g.Key, g => new
+        {
+            Count = g.Count(),
+            MappingCount = g.Select(x => x.SupplierPartId).Distinct().Count(),
+            ParameterCount = g.Select(x => x.PaymentParameterId).Distinct().Count(),
+            Average = g.Average(x => x.Score),
+            LastScored = g.Max(x => x.UpdatedAt)
+        });
+        var users = await db.Users.AsNoTracking().Where(x => assessorIds.Contains(x.Id)).OrderBy(x => x.DisplayName).ToListAsync();
+        var rows = users.Select(u =>
+        {
+            sessionRows.TryGetValue(u.Id, out var session);
+            scoreRows.TryGetValue(u.Id, out var score);
+            return new AssessorPerformanceRow(
+                u.Id, u.UserName, u.DisplayName,
+                session?.Count ?? 0,
+                session?.Seconds ?? 0,
+                session?.LastSeen,
+                session?.Active ?? false,
+                score?.Count ?? 0,
+                score?.MappingCount ?? 0,
+                score?.ParameterCount ?? 0,
+                score?.Average,
+                score?.LastScored);
+        }).OrderByDescending(x => x.TotalScoringSeconds).ThenBy(x => x.DisplayName).ToList();
+
+        var vm = new AssessorPerformanceVm(rows, fromDate, toDate, rows.Sum(x => x.SessionCount),
+            rows.Sum(x => x.ScoreCount), rows.Sum(x => x.TotalScoringSeconds));
+        return View(vm);
+    }
+
+    public record AssessorPerformanceRow(
+        int UserId, string UserName, string DisplayName,
+        int SessionCount, int TotalScoringSeconds, DateTime? LastSeenUtc, bool HasActiveSession,
+        int ScoreCount, int SupplierPartCount, int ParameterCount, decimal? AverageScore, DateTime? LastScoredUtc);
+    public record AssessorPerformanceVm(
+        List<AssessorPerformanceRow> Rows, DateTime? From, DateTime? To,
+        int TotalSessions, int TotalScores, int TotalSeconds);
 }

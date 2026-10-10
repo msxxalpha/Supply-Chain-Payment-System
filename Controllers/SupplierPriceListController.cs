@@ -1,0 +1,329 @@
+using Indamin.Payment.Data;
+using Indamin.Payment.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace Indamin.Payment.Controllers;
+
+[Authorize(Policy = SecurityPermissions.SetupSupplierPriceList)]
+public class SupplierPriceListController(AppDbContext db, ExcelService excel, SupplierPriceDebtAdjustmentService debtAdjustments) : Controller
+{
+    static int NormalizePageSize(int value) => value is 50 or 75 or 100 ? value : 25;
+    int UserId => int.TryParse(User.FindFirst("UserId")?.Value, out var id) ? id : 0;
+
+    public async Task<IActionResult> Index(string? q, int page = 1, int pageSize = 25)
+    {
+        pageSize = NormalizePageSize(pageSize);
+        page = Math.Max(1, page);
+        q = (q ?? "").Trim();
+
+        var query = db.Suppliers.AsNoTracking().Where(x => x.IsActive);
+        if (q != "")
+            query = query.Where(x => x.Code.Contains(q) || x.Title.Contains(q));
+
+        var total = await query.CountAsync();
+        var rows = await query
+            .OrderBy(x => x.Title)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(x => new SupplierPriceListSummaryVm(
+                x.Id, x.Code, x.Title,
+                x.SupplierParts.Count(p => p.IsActive)))
+            .ToListAsync();
+
+        return View(new SupplierPriceListIndexVm(rows, total, page, pageSize, q));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Manage(int supplierId, string? q, int page = 1, int pageSize = 25)
+    {
+        var supplier = await db.Suppliers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == supplierId);
+        if (supplier == null) return NotFound();
+
+        pageSize = NormalizePageSize(pageSize);
+        page = Math.Max(1, page);
+        q = (q ?? "").Trim();
+
+        var mappings = await db.SupplierParts.AsNoTracking()
+            .Include(x => x.Part)
+            .Where(x => x.SupplierId == supplierId && x.IsActive && x.Part!.IsActive)
+            .OrderBy(x => x.Part!.Code)
+            .ToListAsync();
+
+        var priceQuery = db.SupplierPriceListItems.AsNoTracking()
+            .Include(x => x.SupplierPart).ThenInclude(x => x!.Part)
+            .Where(x => x.SupplierPart!.SupplierId == supplierId);
+
+        if (q != "")
+            priceQuery = priceQuery.Where(x =>
+                x.SupplierPart!.Part!.Code.Contains(q) ||
+                x.SupplierPart.Part.Title.Contains(q));
+
+        var total = await priceQuery.CountAsync();
+        var priceRows = await priceQuery
+            .OrderBy(x => x.SupplierPart!.Part!.Code)
+            .ThenByDescending(x => x.ValidFrom)
+            .ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var usedIds = priceRows.Count == 0
+            ? []
+            : await db.PaymentRunInvoices.AsNoTracking()
+                .Where(x => x.PriceListItemId.HasValue && priceRows.Select(p => p.Id).Contains(x.PriceListItemId.Value))
+                .Select(x => x.PriceListItemId!.Value)
+                .Distinct()
+                .ToHashSetAsync();
+
+        return View(new SupplierPriceListManageVm(
+            supplier, mappings, priceRows, usedIds, total, page, pageSize, q));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddPrice(int supplierId, int supplierPartId, string purchasePrice, string validFrom, string validTo)
+    {
+        try
+        {
+            var mapping = await db.SupplierParts.Include(x => x.Supplier)
+                .Include(x => x.Part)
+                .SingleOrDefaultAsync(x => x.Id == supplierPartId && x.SupplierId == supplierId && x.IsActive);
+
+            if (mapping == null) throw new InvalidOperationException("ارتباط کالا–تامین‌کننده انتخاب‌شده معتبر یا فعال نیست.");
+            var price = ParsePurchasePrice(purchasePrice);
+            var from = PersianDateService.Parse(validFrom).Date;
+            var to = PersianDateService.Parse(validTo).Date;
+            ValidatePrice(price, from, to);
+            var result = await debtAdjustments.ApplyAsync(
+                Guid.NewGuid().ToString("N"), "ADD",
+                $"ثبت قیمت {price:N2} برای {mapping.Part!.Title} / {mapping.Supplier!.Title}",
+                new[] { new SupplierPriceMutation(mapping.Id, mapping.SupplierId, mapping.PartId, price, from, to) },
+                UserId, User.Identity?.Name ?? "");
+            TempData["Result"] = FormatAdjustmentResult("رکورد فهرست بها ثبت شد.", result);
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+        return RedirectToAction(nameof(Manage), new { supplierId });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditPrice(long id, string purchasePrice, string validFrom, string validTo)
+    {
+        var row = await db.SupplierPriceListItems.Include(x => x.SupplierPart)
+            .ThenInclude(x => x!.Supplier)
+            .Include(x => x.SupplierPart).ThenInclude(x => x!.Part)
+            .SingleOrDefaultAsync(x => x.Id == id);
+        if (row == null) return NotFound();
+
+        var supplierId = row.SupplierPart!.SupplierId;
+        try
+        {
+            if (!row.IsActive)
+                throw new InvalidOperationException("این رکورد فهرست بها غیرفعال شده و قابل ویرایش نیست.");
+            if (await IsUsedAsync(id))
+                throw new InvalidOperationException("این نرخ قبلاً در محاسبه پرداخت استفاده شده است و قابل ویرایش نیست.");
+
+            var price = ParsePurchasePrice(purchasePrice);
+            var from = PersianDateService.Parse(validFrom).Date;
+            var to = PersianDateService.Parse(validTo).Date;
+            ValidatePrice(price, from, to);
+            var result = await debtAdjustments.ApplyAsync(
+                Guid.NewGuid().ToString("N"), "EDIT",
+                $"ویرایش نرخ {price:N2} برای {row.SupplierPart!.Part!.Title} / {row.SupplierPart.Supplier!.Title}",
+                new[] { new SupplierPriceMutation(row.SupplierPartId, row.SupplierPart.SupplierId, row.SupplierPart.PartId, price, from, to, id) },
+                UserId, User.Identity?.Name ?? "");
+            TempData["Result"] = FormatAdjustmentResult("رکورد فهرست بها به‌روزرسانی شد.", result);
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+
+        return RedirectToAction(nameof(Manage), new { supplierId });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeletePrice(long id)
+    {
+        var row = await db.SupplierPriceListItems.Include(x => x.SupplierPart).SingleOrDefaultAsync(x => x.Id == id);
+        if (row == null) return NotFound();
+        var supplierId = row.SupplierPart!.SupplierId;
+
+        try
+        {
+            if (!row.IsActive)
+                throw new InvalidOperationException("این رکورد فهرست بها قبلاً غیرفعال شده و قابل حذف نیست.");
+            if (await IsUsedAsync(id))
+                throw new InvalidOperationException("این نرخ قبلاً در محاسبه پرداخت استفاده شده است و قابل حذف نیست.");
+
+            db.SupplierPriceListItems.Remove(row);
+            await db.SaveChangesAsync();
+            await LogAsync("DELETE", "SupplierPriceListItem", id.ToString(), "حذف رکورد فهرست بها");
+            TempData["Result"] = "رکورد فهرست بها حذف شد.";
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+
+        return RedirectToAction(nameof(Manage), new { supplierId });
+    }
+
+    [HttpPost, Authorize(Policy = "AdminOnly"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportExcel(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            TempData["Error"] = "فایل Excel انتخاب نشده است.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        try
+        {
+            var suppliers = await db.Suppliers.Where(x => x.IsActive)
+                .AsNoTracking().ToDictionaryAsync(x => Normalize(x.Code), x => x.Id);
+            var parts = await db.Parts.Where(x => x.IsActive)
+                .AsNoTracking().ToDictionaryAsync(x => Normalize(x.Code), x => x.Id);
+
+            var rows = excel.ReadSupplierPriceList(
+                file.OpenReadStream(), suppliers, parts, PersianDateService.Parse, out var errors);
+
+            var seen = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in rows)
+            {
+                var key = $"{item.SupplierId}:{item.PartId}:{item.ValidFrom:yyyyMMdd}:{item.ValidTo:yyyyMMdd}";
+                if (seen.TryGetValue(key, out var seenPrice) && seenPrice == item.PurchasePrice)
+                    errors.Add($"سطر {item.RowNumber}: رکورد کاملاً تکراری با همان قیمت در فایل وجود دارد.");
+                else
+                    seen[key] = item.PurchasePrice;
+
+                var mapping = await db.SupplierParts.AsNoTracking()
+                    .SingleOrDefaultAsync(x => x.SupplierId == item.SupplierId && x.PartId == item.PartId && x.IsActive);
+                if (mapping == null)
+                    errors.Add($"سطر {item.RowNumber}: ارتباط فعال بین تامین‌کننده و کالا در اطلاعات پایه وجود ندارد.");
+            }
+
+            if (errors.Count > 0)
+            {
+                TempData["Error"] = $"ورود فهرست بها انجام نشد. {string.Join(" | ", errors.Distinct())}";
+                return RedirectToAction(nameof(Index));
+            }
+
+            var supplierIds = rows.Select(x => x.SupplierId).Distinct().ToList();
+            var partIds = rows.Select(x => x.PartId).Distinct().ToList();
+            var mappingRows = await db.SupplierParts
+                .Where(x => supplierIds.Contains(x.SupplierId) && partIds.Contains(x.PartId))
+                .ToListAsync();
+            var mappings = mappingRows
+                .Where(x => x.IsActive)
+                .ToDictionary(x => $"{x.SupplierId}:{x.PartId}", x => x.Id);
+
+            var mutations = new List<SupplierPriceMutation>();
+            foreach (var item in rows)
+            {
+                if (!mappings.TryGetValue($"{item.SupplierId}:{item.PartId}", out var mappingId))
+                    throw new InvalidOperationException($"ارتباط فعال تامین‌کننده و کالا برای سطر {item.RowNumber} پیدا نشد.");
+                mutations.Add(new SupplierPriceMutation(
+                    mappingId, item.SupplierId, item.PartId, item.PurchasePrice,
+                    item.ValidFrom, item.ValidTo, SkipIfIdentical: true, RowNumber: item.RowNumber));
+            }
+
+            var result = await debtAdjustments.ApplyAsync(
+                Guid.NewGuid().ToString("N"), "IMPORT_EXCEL",
+                $"ورود تجمیعی {mutations.Count:N0} ردیف فهرست بها از Excel",
+                mutations, UserId, User.Identity?.Name ?? "");
+            TempData["Result"] = FormatAdjustmentResult($"{rows.Count:N0} ردیف فهرست بها بررسی و وارد/به‌روزرسانی شد.", result);
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = "ورود فهرست بها انجام نشد: " + ex.Message;
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> ExportExcel()
+    {
+        var rows = await db.SupplierPriceListItems
+            .Include(x => x.SupplierPart).ThenInclude(x => x!.Supplier)
+            .Include(x => x.SupplierPart).ThenInclude(x => x!.Part)
+            .OrderBy(x => x.SupplierPart!.Supplier!.Code)
+            .ThenBy(x => x.SupplierPart.Part!.Code)
+            .ThenByDescending(x => x.ValidFrom)
+            .ToListAsync();
+        return File(excel.SupplierPriceList(rows),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "supplier-price-list.xlsx");
+    }
+
+    static string FormatAdjustmentResult(string prefix, SupplierPriceAdjustmentApplyResult result)
+    {
+        if (result.AlreadyApplied) return prefix + " این عملیات قبلاً ثبت شده بود؛ از ثبت تکراری جلوگیری شد.";
+        if (result.AffectedReceiptCount == 0) return prefix + " رسید جاریِ ثبت‌شده‌ای نیاز به تعدیل بدهی نداشت.";
+        var change = result.NetDebtChange.ToString("+#,##0.##;-#,##0.##;0", System.Globalization.CultureInfo.InvariantCulture);
+        return $"{prefix} تعداد رسیدهای تعدیل‌شده: {result.AffectedReceiptCount:N0}؛ خالص تغییر بدهی: {change} ریال.";
+    }
+
+    async Task<bool> IsUsedAsync(long id) =>
+        await db.PaymentRunInvoices.AsNoTracking().AnyAsync(x => x.PriceListItemId == id);
+
+    async Task LogAsync(string action, string entity, string id, string details)
+    {
+        db.AuditLogs.Add(new AuditLog
+        {
+            Action = action, Entity = entity, EntityId = id, Details = details, UserId = UserId
+        });
+        await db.SaveChangesAsync();
+    }
+
+    static decimal ParsePurchasePrice(string raw)
+    {
+        var value = PersianDateService.ToLatinDigits(raw ?? "")
+            .Trim()
+            .Replace("٬", "")
+            .Replace(",", "")
+            .Replace(" ", "")
+            .Replace("٫", ".");
+        if (!decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var price))
+            throw new InvalidOperationException("قیمت خرید (فی) نامعتبر است.");
+        return price;
+    }
+
+    async Task DeactivateConflictingPricesAsync(int supplierPartId, DateTime from, DateTime to, decimal newPrice, long? exceptId)
+    {
+        var conflicts = await db.SupplierPriceListItems
+            .Where(x => x.SupplierPartId == supplierPartId &&
+                        x.ValidFrom == from &&
+                        x.ValidTo == to &&
+                        x.IsActive &&
+                        (!exceptId.HasValue || x.Id != exceptId.Value))
+            .ToListAsync();
+
+        foreach (var old in conflicts)
+        {
+            if (old.PurchasePrice == Math.Round(newPrice, 2))
+                throw new InvalidOperationException("رکوردی با همین کالا، تامین‌کننده، بازه زمانی و قیمت قبلاً فعال است.");
+
+            old.IsActive = false;
+            old.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
+    static void ValidatePrice(decimal price, DateTime from, DateTime to)
+    {
+        if (price <= 0) throw new InvalidOperationException("قیمت خرید (فی) باید بزرگ‌تر از صفر باشد.");
+        if (to < from) throw new InvalidOperationException("تاریخ پایان نمی‌تواند قبل از تاریخ شروع باشد.");
+    }
+
+    static string Normalize(string s) => (s ?? "").Trim().Replace("ي", "ی").Replace("ك", "ک").ToLowerInvariant();
+
+    public record SupplierPriceListSummaryVm(int SupplierId, string Code, string Title, int LinkedPartCount);
+    public record SupplierPriceListIndexVm(List<SupplierPriceListSummaryVm> Rows, int TotalCount, int Page, int PageSize, string Search);
+    public record SupplierPriceListManageVm(
+        Supplier Supplier, List<SupplierPart> Mappings, List<SupplierPriceListItem> Rows,
+        HashSet<long> UsedIds, int TotalCount, int Page, int PageSize, string Search);
+}

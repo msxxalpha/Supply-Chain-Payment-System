@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Indamin.Payment.Data;
 using Indamin.Payment.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -9,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Indamin.Payment.Controllers;
 
 [Authorize]
-public class PaymentWizardController(AppDbContext db, ExcelService excel, PaymentCalculationService calc, PaymentOrderPdfService pdf) : Controller
+public class PaymentWizardController(AppDbContext db, ExcelService excel, PaymentCalculationService calc, PaymentOrderPdfService pdf, InputQueryService inputQueries, SupplierPriceDebtAdjustmentService debtAdjustments) : Controller
 {
     const string SessionKey = "PaymentWizardState";
     int UserId => int.TryParse(User.FindFirst("UserId")?.Value, out var id) ? id : 0;
@@ -47,6 +48,8 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             s.PeriodFromJalali = PersianDateService.ToJalali(from);
             s.PeriodToJalali = PersianDateService.ToJalali(to);
             s.Title = string.IsNullOrWhiteSpace(s.Title) ? "محاسبه تخصیص تامین‌کنندگان" : s.Title.Trim();
+            if (s.ReceiptSource is not PaymentReceiptSource.Excel and not PaymentReceiptSource.WarehouseSubsystem)
+                throw new InvalidOperationException("منبع اطلاعات رسیدها نامعتبر است.");
             s.Step = 2;
             Save(s);
             return RedirectToAction(nameof(Step2));
@@ -74,10 +77,17 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
     {
         var s = Load();
         if (s == null) return RedirectToAction(nameof(Step1));
-        s.ImportErrorGroups = [];
+        if (s.ReceiptSource != PaymentReceiptSource.Excel)
+        {
+            TempData["Error"] = "در این نوبت، منبع اطلاعات رسیدها «زیرسیستم انبار» انتخاب شده است.";
+            return RedirectToAction(nameof(Step2));
+        }
 
         if (file == null || file.Length == 0)
         {
+            s.ImportErrorsIgnored = false;
+            s.CanIgnoreImportErrors = false;
+            s.IgnoredImportRowNumbers = [];
             s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "file", Title = "فرمت و ساختار فایل", Errors = ["فایل Excel انتخاب نشده است."] }];
             Save(s);
             return View("Step2", s);
@@ -86,54 +96,162 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         try
         {
             var rows = excel.ReadPaymentInvoices(file.OpenReadStream(), PersianDateService.Parse, out var errors);
+            return await ProcessImportedRowsAsync(s, rows, errors, Path.GetFileName(file.FileName), PaymentReceiptSource.Excel);
+        }
+        catch (Exception ex)
+        {
+            s.ImportErrorsIgnored = false;
+            s.CanIgnoreImportErrors = false;
+            s.IgnoredImportRowNumbers = [];
+            s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "system", Title = "خطای پردازش فایل", Errors = [ex.Message] }];
+            Save(s);
+            return View("Step2", s);
+        }
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> LoadWarehouse()
+    {
+        var s = Load();
+        if (s == null) return RedirectToAction(nameof(Step1));
+        if (s.ReceiptSource != PaymentReceiptSource.WarehouseSubsystem)
+        {
+            TempData["Error"] = "برای دریافت مستقیم، ابتدا در گام اول منبع «زیرسیستم انبار» را انتخاب کنید.";
+            return RedirectToAction(nameof(Step1));
+        }
+
+        try
+        {
             var from = PersianDateService.Parse(s.PeriodFromJalali);
             var to = PersianDateService.Parse(s.PeriodToJalali);
-            var outside = rows.Where(x => x.ReceiptDate.Date < from.Date || x.ReceiptDate.Date > to.Date).ToList();
-            if (outside.Count > 0) errors.Add($"{outside.Count} رکورد خارج از بازه زمانی تعیین‌شده است.");
-
-            s.SourceFileName = Path.GetFileName(file.FileName);
-            s.MissingParts = [];
-            s.MissingSuppliers = [];
-
-            var parts = await db.Parts.Where(x => x.IsActive).AsNoTracking().Select(x => new { x.Id, x.Title }).ToListAsync();
-            var suppliers = await db.Suppliers.Where(x => x.IsActive).AsNoTracking().Select(x => new { x.Id, x.Title }).ToListAsync();
-            var partByName = parts.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
-            var supplierByName = suppliers.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
-
-            s.MissingParts = rows.Select(x => x.PartTitle.Trim()).Where(x => x != "" && !partByName.ContainsKey(Normalize(x))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            s.MissingSuppliers = rows.Select(x => x.SupplierTitle.Trim()).Where(x => x != "" && !supplierByName.ContainsKey(Normalize(x))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-
-            errors.AddRange(s.MissingParts.Select(x => $"کالا «{x}» در اطلاعات پایه تعریف نشده یا فعال نیست."));
-            errors.AddRange(s.MissingSuppliers.Select(x => $"تامین‌کننده «{x}» در اطلاعات پایه تعریف نشده یا فعال نیست."));
-
-            var activeMappings = await db.SupplierParts.Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
-                .AsNoTracking().Select(x => new { x.PartId, x.SupplierId }).ToListAsync();
-            var mappingKeys = activeMappings.Select(x => $"{x.PartId}:{x.SupplierId}").ToHashSet();
-            var mappingErrors = rows
-                .Where(x => partByName.ContainsKey(Normalize(x.PartTitle)) && supplierByName.ContainsKey(Normalize(x.SupplierTitle)))
-                .Select(x => new
-                {
-                    Part = x.PartTitle.Trim(),
-                    Supplier = x.SupplierTitle.Trim(),
-                    Key = $"{partByName[Normalize(x.PartTitle)].Id}:{supplierByName[Normalize(x.SupplierTitle)].Id}"
-                })
-                .Where(x => !mappingKeys.Contains(x.Key))
-                .Select(x => $"ارتباط فعال بین کالا «{x.Part}» و تامین‌کننده «{x.Supplier}» در اطلاعات پایه تعریف نشده است.")
-                .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            errors.AddRange(mappingErrors);
-
-            if (errors.Count > 0)
+            var result = await inputQueries.ExecuteInventoryReceiptsAsync(from, to);
+            if (!result.Success && result.Rows.Count == 0)
             {
+                s.ImportErrorsIgnored = false;
+                s.CanIgnoreImportErrors = false;
+                s.IgnoredImportRowNumbers = [];
+                s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "warehouse-query", Title = "کوئری زیرسیستم انبار", Errors = result.Errors }];
                 s.Rows = [];
                 s.Parameters = [];
-                s.ImportedDebt = rows.Sum(x => x.DebtAmount);
-                s.RemainingDebt = rows.Sum(x => x.DebtAmount);
-                s.ImportErrorGroups = CategorizeImportErrors(errors);
                 Save(s);
                 return View("Step2", s);
             }
 
-            await calc.CalculateAsync(s, rows);
+            return await ProcessImportedRowsAsync(
+                s,
+                result.Rows,
+                result.Errors,
+                "زیرسیستم انبار؛ اطلاعات رسیدهای خرید انبار",
+                PaymentReceiptSource.WarehouseSubsystem);
+        }
+        catch (Exception ex)
+        {
+            s.ImportErrorsIgnored = false;
+            s.CanIgnoreImportErrors = false;
+            s.IgnoredImportRowNumbers = [];
+            s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "warehouse-query", Title = "اجرای کوئری زیرسیستم انبار", Errors = [ex.Message] }];
+            Save(s);
+            return View("Step2", s);
+        }
+    }
+
+    async Task<IActionResult> ProcessImportedRowsAsync(
+        PaymentWizardState s,
+        IReadOnlyList<ImportedPaymentInvoice> imported,
+        List<string> errors,
+        string sourceName,
+        PaymentReceiptSource source)
+    {
+        s.ImportErrorGroups = [];
+        s.ImportErrorsIgnored = false;
+        s.IgnoredImportRowNumbers = [];
+        s.ReceiptSource = source;
+        s.SourceFileName = sourceName;
+        s.ImportedReceipts = imported.ToList();
+        s.MissingParts = [];
+        s.MissingSuppliers = [];
+
+        var from = PersianDateService.Parse(s.PeriodFromJalali);
+        var to = PersianDateService.Parse(s.PeriodToJalali);
+        var outside = imported.Where(x => x.ReceiptDate.Date < from.Date || x.ReceiptDate.Date > to.Date).ToList();
+        if (outside.Count > 0)
+            errors.Add($"{outside.Count} رکورد خارج از بازه زمانی تعیین‌شده است؛ {SourceRows(outside.Select(x => x.RowNumber), source)}.");
+
+        var parts = await db.Parts.Where(x => x.IsActive).AsNoTracking().Select(x => new { x.Id, x.Title }).ToListAsync();
+        var suppliers = await db.Suppliers.Where(x => x.IsActive).AsNoTracking().Select(x => new { x.Id, x.Title }).ToListAsync();
+        var partByName = parts.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
+        var supplierByName = suppliers.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
+
+        s.MissingParts = imported.Select(x => x.PartTitle.Trim()).Where(x => x != "" && !partByName.ContainsKey(Normalize(x))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        s.MissingSuppliers = imported.Select(x => x.SupplierTitle.Trim()).Where(x => x != "" && !supplierByName.ContainsKey(Normalize(x))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+
+        errors.AddRange(imported
+            .Where(x => !string.IsNullOrWhiteSpace(x.PartTitle) && !partByName.ContainsKey(Normalize(x.PartTitle)))
+            .GroupBy(x => x.PartTitle.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => $"کالا «{g.Key}» در اطلاعات پایه تعریف نشده یا فعال نیست؛ {SourceRows(g.Select(x => x.RowNumber), source)}."));
+
+        errors.AddRange(imported
+            .Where(x => !string.IsNullOrWhiteSpace(x.SupplierTitle) && !supplierByName.ContainsKey(Normalize(x.SupplierTitle)))
+            .GroupBy(x => x.SupplierTitle.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => $"تامین‌کننده «{g.Key}» در اطلاعات پایه تعریف نشده یا فعال نیست؛ {SourceRows(g.Select(x => x.RowNumber), source)}."));
+
+        var activeMappings = await db.SupplierParts
+            .Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
+            .AsNoTracking()
+            .Select(x => new { x.Id, x.PartId, x.SupplierId })
+            .ToListAsync();
+        var mappingByPair = activeMappings.ToDictionary(x => (x.PartId, x.SupplierId), x => x.Id);
+        var mappingKeys = mappingByPair.Keys
+            .Select(x => $"{x.PartId}:{x.SupplierId}")
+            .ToHashSet();
+
+        var mappingErrors = imported
+            .Where(x => partByName.ContainsKey(Normalize(x.PartTitle)) && supplierByName.ContainsKey(Normalize(x.SupplierTitle)))
+            .GroupBy(x => new
+            {
+                Part = x.PartTitle.Trim(),
+                Supplier = x.SupplierTitle.Trim(),
+                Key = $"{partByName[Normalize(x.PartTitle)].Id}:{supplierByName[Normalize(x.SupplierTitle)].Id}"
+            })
+            .Where(g => !mappingKeys.Contains(g.Key.Key))
+            .Select(g => $"ارتباط فعال بین کالا «{g.Key.Part}» و تامین‌کننده «{g.Key.Supplier}» در اطلاعات پایه تعریف نشده است؛ {SourceRows(g.Select(x => x.RowNumber), source)}.")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
+        errors.AddRange(mappingErrors);
+
+        if (s.CurrentClaimCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList)
+        {
+            var partRefs = partByName.ToDictionary(x => x.Key, x => (Id: x.Value.Id, Title: x.Value.Title));
+            var supplierRefs = supplierByName.ToDictionary(x => x.Key, x => (Id: x.Value.Id, Title: x.Value.Title));
+            var priceListErrors = await FindMissingPriceListErrorsAsync(
+                imported, partRefs, supplierRefs, mappingByPair, source == PaymentReceiptSource.Excel);
+            errors.AddRange(priceListErrors);
+        }
+
+        if (errors.Count > 0)
+        {
+            s.IgnoredImportRowNumbers = ExtractImportErrorRowNumbers(errors);
+            s.ImportErrorsIgnored = false;
+            s.CanIgnoreImportErrors = s.IgnoredImportRowNumbers.Count > 0
+                && errors
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .All(x => ExtractImportErrorRowNumbers([x]).Count > 0);
+            s.Rows = [];
+            s.Parameters = [];
+            s.ImportedDebt = imported.Sum(x => x.DebtAmount);
+            s.RemainingDebt = imported.Sum(x => x.DebtAmount);
+            s.ImportErrorGroups = CategorizeImportErrors(errors);
+            Save(s);
+            return View("Step2", s);
+        }
+
+        try
+        {
+            await calc.CalculateAsync(s, imported);
             s.ImportErrorGroups = [];
             s.MissingParts = [];
             s.MissingSuppliers = [];
@@ -142,11 +260,189 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         }
         catch (Exception ex)
         {
-            s.ImportErrorGroups = [new PaymentImportErrorGroup { Key = "system", Title = "خطای پردازش فایل", Errors = [ex.Message] }];
+            s.ImportErrorGroups = CategorizeImportErrors([ex.Message]);
             Save(s);
             return View("Step2", s);
         }
     }
+
+    async Task<List<string>> FindMissingPriceListErrorsAsync(
+        IReadOnlyList<ImportedPaymentInvoice> imported,
+        IReadOnlyDictionary<string, (int Id, string Title)> partByName,
+        IReadOnlyDictionary<string, (int Id, string Title)> supplierByName,
+        IReadOnlyDictionary<(int PartId, int SupplierId), int> mappingByPair,
+        bool isExcel)
+    {
+        var mappedRows = imported
+            .Where(x => partByName.ContainsKey(Normalize(x.PartTitle))
+                     && supplierByName.ContainsKey(Normalize(x.SupplierTitle)))
+            .Select(x =>
+            {
+                var part = partByName[Normalize(x.PartTitle)];
+                var supplier = supplierByName[Normalize(x.SupplierTitle)];
+                var pair = (PartId: (int)part.Id, SupplierId: (int)supplier.Id);
+                return new
+                {
+                    x.RowNumber,
+                    x.ReceiptDate,
+                    PartId = pair.PartId,
+                    SupplierId = pair.SupplierId,
+                    PartTitle = part.Title,
+                    SupplierTitle = supplier.Title,
+                    MappingId = mappingByPair.GetValueOrDefault(pair)
+                };
+            })
+            .Where(x => x.MappingId > 0)
+            .ToList();
+
+        if (mappedRows.Count == 0) return [];
+
+        var mappingIds = mappedRows.Select(x => x.MappingId).Distinct().ToList();
+        var activePrices = await db.SupplierPriceListItems.AsNoTracking()
+            .Where(x => x.IsActive && x.PurchasePrice > 0 && mappingIds.Contains(x.SupplierPartId))
+            .Select(x => new { x.SupplierPartId, x.ValidFrom, x.ValidTo })
+            .ToListAsync();
+
+        var pricesByMapping = activePrices
+            .GroupBy(x => x.SupplierPartId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var errors = new List<string>();
+        foreach (var group in mappedRows.GroupBy(x => new
+                 {
+                     x.MappingId,
+                     x.PartId,
+                     x.SupplierId,
+                     x.PartTitle,
+                     x.SupplierTitle
+                 }))
+        {
+            pricesByMapping.TryGetValue(group.Key.MappingId, out var prices);
+            prices ??= [];
+
+            var missingDates = group
+                .GroupBy(x => x.ReceiptDate.Date)
+                .Select(g => new
+                {
+                    Date = g.Key,
+                    RowNumbers = g.Select(x => x.RowNumber).OrderBy(x => x).ToList()
+                })
+                .Where(x => !prices.Any(p => p.ValidFrom.Date <= x.Date && p.ValidTo.Date >= x.Date))
+                .OrderBy(x => x.Date)
+                .ToList();
+
+            if (missingDates.Count == 0) continue;
+
+            var rowsText = string.Join("، ", missingDates.SelectMany(x => x.RowNumbers).Distinct().OrderBy(x => x));
+            var sourceText = isExcel ? "سطرهای Excel" : "رکوردهای ورودی";
+
+            if (prices.Count == 0)
+            {
+                errors.Add(
+                    $"برای کالا «{group.Key.PartTitle}» و تامین‌کننده «{group.Key.SupplierTitle}» هیچ قیمت فعالی در فهرست بها ثبت نشده است؛ {sourceText}: {rowsText}.");
+            }
+            else
+            {
+                var datesText = string.Join("، ",
+                    missingDates.Select(x => PersianDateService.ToJalali(x.Date)));
+
+                errors.Add(
+                    $"برای کالا «{group.Key.PartTitle}» و تامین‌کننده «{group.Key.SupplierTitle}» در تاریخ‌های {datesText} قیمت معتبر در فهرست بها وجود ندارد؛ {sourceText}: {rowsText}.");
+            }
+        }
+
+        return errors
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
+    }
+
+    static string SourceRows(IEnumerable<int> rowNumbers, PaymentReceiptSource source)
+    {
+        var rows = string.Join("، ", rowNumbers.Distinct().OrderBy(x => x));
+        return source == PaymentReceiptSource.Excel
+            ? $"سطرهای Excel: {rows}"
+            : $"رکوردهای ورودی: {rows}";
+    }
+
+    public static List<int> ExtractImportErrorRowNumbers(IEnumerable<string> errors)
+    {
+        var result = new HashSet<int>();
+        const string pattern = @"(?:سطر\s+|سطرهای\s+Excel:\s*|رکوردهای\s+ورودی:\s*)([0-9۰-۹]+(?:\s*[،,]\s*[0-9۰-۹]+)*)";
+
+        foreach (var error in errors.Where(x => !string.IsNullOrWhiteSpace(x)))
+        {
+            foreach (Match match in Regex.Matches(error, pattern, RegexOptions.CultureInvariant))
+            {
+                foreach (var token in match.Groups[1].Value.Split(new[] { '،', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    var normalized = PersianDateService.ToLatinDigits(token);
+                    if (int.TryParse(normalized, out var rowNumber) && rowNumber > 0)
+                        result.Add(rowNumber);
+                }
+            }
+        }
+
+        return result.OrderBy(x => x).ToList();
+    }
+
+    [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ContinueWithIgnoredErrors(bool ignoreErrors)
+    {
+        var s = Load();
+        if (s == null) return RedirectToAction(nameof(Step1));
+
+        if (!ignoreErrors || !s.CanIgnoreImportErrors || s.IgnoredImportRowNumbers.Count == 0)
+        {
+            TempData["Error"] = "خطاهای موجود قابل نادیده گرفتن نیستند یا گزینه مربوطه فعال نشده است.";
+            return RedirectToAction(nameof(Step2));
+        }
+
+        if (s.ImportErrorGroups.Count == 0 || s.ImportErrorGroups.SelectMany(x => x.Errors).Any(e => ExtractImportErrorRowNumbers([e]).Count == 0))
+        {
+            TempData["Error"] = "همه خطاهای موجود قابل نادیده گرفتن نیستند؛ خطاهای ساختاری یا اتصال باید ابتدا برطرف شوند.";
+            return RedirectToAction(nameof(Step2));
+        }
+
+        var ignored = s.IgnoredImportRowNumbers.ToHashSet();
+        var validRows = s.ImportedReceipts
+            .Where(x => !ignored.Contains(x.RowNumber))
+            .ToList();
+
+        if (validRows.Count == 0)
+        {
+            TempData["Error"] = "پس از حذف رکوردهای خطادار، هیچ رکورد سالمی برای محاسبه باقی نمانده است.";
+            return RedirectToAction(nameof(Step2));
+        }
+
+        try
+        {
+            s.ImportedReceipts = validRows;
+            s.ImportErrorsIgnored = true;
+            s.Rows = [];
+            s.Parameters = [];
+            s.ImportedDebt = validRows.Sum(x => x.DebtAmount);
+            s.RemainingDebt = s.ImportedDebt;
+            s.ImportErrorGroups = [];
+            s.CanIgnoreImportErrors = false;
+            await calc.CalculateAsync(s, validRows);
+            Save(s);
+            TempData["Result"] = $"{ignored.Count:N0} رکورد خطادار نادیده گرفته شد و محاسبه با {validRows.Count:N0} رکورد سالم انجام شد.";
+            return RedirectToAction(nameof(Step2));
+        }
+        catch (Exception ex)
+        {
+            s.ImportErrorsIgnored = false;
+            s.CanIgnoreImportErrors = false;
+            s.IgnoredImportRowNumbers = [];
+            s.ImportErrorGroups = CategorizeImportErrors([ex.Message]);
+            Save(s);
+            return View("Step2", s);
+        }
+    }
+
 
     static List<PaymentImportErrorGroup> CategorizeImportErrors(List<string> errors)
     {
@@ -157,6 +453,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             new PaymentImportErrorGroup { Key = "format", Title = "فرمت و ساختار فایل", Errors = [] },
             new PaymentImportErrorGroup { Key = "parts", Title = "کالاهای تعریف‌نشده یا غیرفعال", Errors = [] },
             new PaymentImportErrorGroup { Key = "suppliers", Title = "تامین‌کنندگان تعریف‌نشده یا غیرفعال", Errors = [] },
+            new PaymentImportErrorGroup { Key = "prices", Title = "فهرست بها؛ قیمت‌های ناموجود", Errors = [] },
             new PaymentImportErrorGroup { Key = "mapping", Title = "ارتباط‌های تعریف‌نشده کالا–تامین‌کننده", Errors = [] },
             new PaymentImportErrorGroup { Key = "other", Title = "سایر خطاهای کنترل اطلاعات", Errors = [] }
         };
@@ -177,9 +474,13 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         // به‌اشتباه در گروه فرمت یا خطاهای عمومی قرار نگیرند.
         if (error.Contains("ستون", StringComparison.OrdinalIgnoreCase)
             || error.Contains("فایل Excel", StringComparison.OrdinalIgnoreCase)
-            || error.Contains("فرمت", StringComparison.OrdinalIgnoreCase)
-            || error.Contains("Excel", StringComparison.OrdinalIgnoreCase))
+            || error.Contains("فرمت", StringComparison.OrdinalIgnoreCase))
             return groups.First(x => x.Key == "format");
+
+        if (error.Contains("فهرست بها", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("قیمت معتبر", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("قیمت فعالی", StringComparison.OrdinalIgnoreCase))
+            return groups.First(x => x.Key == "prices");
 
         if (error.Contains("ارتباط فعال بین کالا", StringComparison.OrdinalIgnoreCase)
             || error.Contains("قطعه–تامین‌کننده", StringComparison.OrdinalIgnoreCase)
@@ -219,7 +520,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
         try
         {
-            await calc.RecalculateAllocationAsync(s);
+            await calc.RecalculateCurrentDebtsAsync(s);
             Save(s);
             TempData["Result"] = "امتیازهای دستی و مبلغ تخصیص‌یافته با قواعد جدید مجدداً محاسبه شد.";
         }
@@ -287,7 +588,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
     [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult GoStep3()
+    public async Task<IActionResult> GoStep3()
     {
         var s = Load();
         if (s == null) return RedirectToAction(nameof(Step1));
@@ -301,9 +602,22 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             TempData["Error"] = "تمام پارامترهای دستی باید امتیاز معتبر داشته باشند.";
             return RedirectToAction(nameof(Step2));
         }
-        s.Step = 3;
-        Save(s);
-        return RedirectToAction(nameof(Step3));
+        try
+        {
+            // قیمت معتبر باید درست پیش از ورود به مرحله تخصیص نهایی دوباره تعیین شود.
+            // بنابراین اگر فهرست بها بین جذب اطلاعات و مرحله سوم تغییر کرده باشد،
+            // محاسبه بر مبنای آخرین نرخ معتبر انجام می‌شود.
+            await calc.RecalculateCurrentDebtsAsync(s);
+            s.Step = 3;
+            Save(s);
+            return RedirectToAction(nameof(Step3));
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = ex.Message;
+            Save(s);
+            return RedirectToAction(nameof(Step2));
+        }
     }
 
     [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
@@ -360,6 +674,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             var run = new PaymentRun
             {
                 RunType = PaymentRunType.Calculated,
+                ReceiptSource = s.ReceiptSource,
                 Title = s.Title,
                 CalculationDateJalali = s.CalculationDateJalali,
                 CalculationDate = s.CalcDate(),
@@ -383,6 +698,14 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             };
             db.PaymentRuns.Add(run);
             await db.SaveChangesAsync();
+
+            if (s.CurrentClaimCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList)
+            {
+                foreach (var row in s.Rows)
+                    await debtAdjustments.ValidateCurrentPriceSnapshotAsync(
+                        row.PartId, row.SupplierId, row.ReceiptDate, row.PriceListItemId,
+                        row.AppliedUnitPrice, row.ReceiptNo);
+            }
 
             await SaveSystemParameterSnapshotsAsync(run.Id, s);
             foreach (var p in s.Parameters)
@@ -432,6 +755,12 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
                     SupplierTitle = row.SupplierTitle,
                     PartId = row.PartId,
                     SupplierId = row.SupplierId,
+                    ReceiptQuantity = row.ReceiptQuantity,
+                    DebtCalculationMethod = row.DebtCalculationMethod,
+                    AppliedUnitPrice = row.AppliedUnitPrice,
+                    PriceListItemId = row.PriceListItemId,
+                    AppliedPriceValidFrom = row.AppliedPriceValidFrom,
+                    AppliedPriceValidTo = row.AppliedPriceValidTo,
                     OriginalDebt = row.OriginalDebt,
                     ReceiptDate = row.ReceiptDate,
                     ReceiptDateJalali = row.ReceiptDateJalali,
@@ -531,7 +860,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
     public async Task<IActionResult> History()
     {
         var rows = await db.PaymentRuns.Where(x => !x.IsDeleted && (x.Status == PaymentRunStatus.Approved || x.Status == PaymentRunStatus.PaymentOrdered))
-            .Include(x => x.Invoices).Include(x => x.SupplierSummaries).OrderByDescending(x => x.Id).ToListAsync();
+            .Include(x => x.Invoices).Include(x => x.SupplierSummaries).Include(x => x.SystemParameterSnapshots).OrderByDescending(x => x.Id).ToListAsync();
         return View(rows);
     }
 
@@ -573,6 +902,8 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         var rows = run.Invoices.Select(x => new PaymentCalculationRow
         {
             ReceiptNo = x.ReceiptNo, Warehouse = x.Warehouse, PartTitle = x.PartTitle, SupplierTitle = x.SupplierTitle,
+            ReceiptQuantity = x.ReceiptQuantity, DebtCalculationMethod = x.DebtCalculationMethod, AppliedUnitPrice = x.AppliedUnitPrice,
+            PriceListItemId = x.PriceListItemId, AppliedPriceValidFrom = x.AppliedPriceValidFrom, AppliedPriceValidTo = x.AppliedPriceValidTo,
             OriginalDebt = x.OriginalDebt, PreviousAllocated = x.PreviousAllocated, RemainingDebt = x.RemainingDebt,
             SupplierOutstandingDebt = x.SupplierOutstandingDebt, ContractSettlementDays = x.ContractSettlementDays, DebtAgeDays = x.DebtAgeDays,
             WeightedScore = x.WeightedScore, AllocationRatio = x.AllocationRatio,
@@ -626,6 +957,14 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
             var user = await db.Users.FindAsync(UserId);
             var alreadyApplied = run.FinancialEffectsAppliedAt.HasValue;
+
+            if (run.RunType == PaymentRunType.Calculated)
+            {
+                foreach (var row in run.Invoices.Where(x => x.DebtCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList))
+                    await debtAdjustments.ValidateCurrentPriceSnapshotAsync(
+                        row.PartId, row.SupplierId, row.ReceiptDate, row.PriceListItemId,
+                        row.AppliedUnitPrice, row.ReceiptNo);
+            }
 
             if (!alreadyApplied)
             {

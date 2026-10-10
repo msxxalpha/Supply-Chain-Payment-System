@@ -1,0 +1,42 @@
+@model Indamin.Payment.Controllers.ReportsController.AssessorPerformanceVm
+@using Indamin.Payment.Services
+@{
+    ViewData["Title"] = "گزارش عملکرد ارزیابان قطعه–تامین‌کننده";
+    string Duration(int seconds) { var t = TimeSpan.FromSeconds(Math.Max(0, seconds)); return $"{(int)t.TotalHours:00}:{t.Minutes:00}:{t.Seconds:00}"; }
+    string LocalDate(DateTime? value) => value.HasValue ? PersianDateService.ToJalali(value.Value.ToLocalTime()) + " " + value.Value.ToLocalTime().ToString("HH:mm") : "—";
+}
+<div class="page-header">
+ <div><div class="eyebrow">گزارش‌ها و تحلیل</div><h2>گزارش عملکرد ارزیابان قطعه–تامین‌کننده</h2><p class="text-muted">مدت حضور، تعداد امتیازهای ثبت‌شده و میزان فعالیت هر ارزیاب را در بازه انتخابی بررسی کنید.</p></div>
+ <div class="export-group"><a class="btn btn-outline-secondary" href="/Users">مدیریت کاربران و نشست‌ها</a></div>
+</div>
+<div class="form-panel mb-3">
+ <form method="get" action="/Reports/AssessorPerformance" class="row g-3 align-items-end">
+  <div class="col-md-4"><label class="form-label">از تاریخ شمسی</label><div class="jalali-input"><input class="form-control" type="text" name="from" value="@(Model.From.HasValue ? PersianDateService.ToJalali(Model.From.Value) : "")" inputmode="numeric" data-jalali-date autocomplete="off" spellcheck="false" aria-label="از تاریخ شمسی"><button class="date-trigger" type="button" data-jalali-trigger aria-label="باز کردن تقویم تاریخ شروع" title="تقویم شمسی">▣</button></div></div>
+  <div class="col-md-4"><label class="form-label">تا تاریخ شمسی</label><div class="jalali-input"><input class="form-control" type="text" name="to" value="@(Model.To.HasValue ? PersianDateService.ToJalali(Model.To.Value) : "")" inputmode="numeric" data-jalali-date autocomplete="off" spellcheck="false" aria-label="تا تاریخ شمسی"><button class="date-trigger" type="button" data-jalali-trigger aria-label="باز کردن تقویم تاریخ پایان" title="تقویم شمسی">▣</button></div></div>
+  <div class="col-md-4 d-flex gap-2"><button class="btn btn-main" type="submit">اعمال فیلتر</button><a class="btn btn-outline-secondary" href="/Reports/AssessorPerformance">پاک‌کردن</a></div>
+ </form>
+ <div class="form-hint mt-2">فیلتر تاریخ شمسی بر اساس زمان ورود به نشست برای حضور و زمان آخرین ثبت امتیاز برای فعالیت ارزیابی اعمال می‌شود. زمان‌ها به وقت محلی نمایش داده می‌شوند.</div>
+</div>
+<div class="payment-kpi-grid report-kpis">
+ <div class="payment-kpi"><span>کل نشست‌های ثبت‌شده</span><strong>@Model.TotalSessions.ToString("N0")</strong><small>در بازه انتخابی</small></div>
+ <div class="payment-kpi"><span>کل امتیازهای ثبت/اصلاح‌شده</span><strong>@Model.TotalScores.ToString("N0")</strong><small>شامل اصلاح امتیاز قبلی</small></div>
+ <div class="payment-kpi"><span>مجموع زمان حضور</span><strong>@Duration(Model.TotalSeconds)</strong><small>ساعت:دقیقه:ثانیه</small></div>
+</div>
+<div class="table-panel mt-3">
+ <div class="panel-title"><div><h4>خلاصه عملکرد به تفکیک ارزیاب</h4><span>مرتب‌شده بر اساس مدت حضور محاسبه‌شده</span></div><span class="mini-label">@Model.Rows.Count.ToString("N0") ارزیاب</span></div>
+ <div class="table-responsive"><table class="table modern-table align-middle">
+  <thead><tr><th>ارزیاب</th><th>نام کاربری</th><th>تعداد نشست</th><th>مدت حضور</th><th>قطعه–تامین‌کننده ارزیابی‌شده</th><th>پارامترهای ارزیابی‌شده</th><th>تعداد امتیازها</th><th>میانگین امتیاز</th><th>آخرین فعالیت</th><th>وضعیت نشست</th></tr></thead>
+  <tbody>
+  @foreach(var x in Model.Rows){
+   <tr>
+    <td class="fw-bold">@x.DisplayName</td><td>@x.UserName</td><td>@x.SessionCount.ToString("N0")</td>
+    <td class="amount-emphasis">@Duration(x.TotalScoringSeconds)</td><td>@x.SupplierPartCount.ToString("N0")</td><td>@x.ParameterCount.ToString("N0")</td><td>@x.ScoreCount.ToString("N0")</td>
+    <td>@(x.AverageScore.HasValue ? x.AverageScore.Value.ToString("0.##") : "—")</td><td>@LocalDate(x.LastSeenUtc)</td>
+    <td>@(x.HasActiveSession ? "نشست باز" : "خارج از سامانه")</td>
+   </tr>
+  }
+  @if(Model.Rows.Count==0){<tr><td colspan="10" class="text-center text-muted py-4">برای بازه انتخابی فعالیتی ثبت نشده است.</td></tr>}
+  </tbody>
+ </table></div>
+ <div class="form-hint mt-2">اگر کاربر بدون خروج از سامانه مرورگر را ببندد، مدت حضور نشست باز با زمان آخرین فعالیت/ضربان صفحه تخمین زده می‌شود؛ این عدد مدت فعال بودن واقعی کاربر پشت سیستم را تضمین نمی‌کند.</div>
+</div>

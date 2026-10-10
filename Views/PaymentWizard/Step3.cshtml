@@ -1,4 +1,5 @@
 @model Indamin.Payment.Data.PaymentWizardState
+@using Indamin.Payment.Services
 @{
  ViewData["Title"]="گام سوم؛ تجمیع و تایید تخصیص";
  var groups=Model.Rows.Where(x=>x.SupplierId.HasValue).GroupBy(x=>new{x.SupplierId,x.SupplierTitle}).Select(g=>new{
@@ -8,15 +9,20 @@
  }).OrderByDescending(x=>x.Amount).ThenBy(x=>x.Supplier).ToList();
  var total=groups.Sum(x=>x.Amount);var calculatedTotal=groups.Sum(x=>x.Calculated);var initialTotal=groups.Sum(x=>x.Initial);var currentTotal=groups.Sum(x=>x.Current);var remainingBudget=Math.Max(0,Model.TotalAllocationBudget-total);
 }
-<div class="wizard-steps"><div class="wizard-step done"><span class="num">✓</span><div><b>تنظیمات محاسبه</b><small>تکمیل شد</small></div></div><div class="wizard-step done"><span class="num">✓</span><div><b>جذب و محاسبه</b><small>@Model.Rows.Count رسید</small></div></div><div class="wizard-step active"><span class="num">۳</span><div><b>تجمیع و تایید</b><small>خلاصه تامین‌کنندگان</small></div></div></div>
-<div class="page-header"><div><div class="eyebrow">کنترل تخصیص قبل از ثبت</div><h2>تجمیع مبلغ تخصیص به تفکیک تامین‌کننده</h2><p class="text-muted">در این مرحله تخصیص‌های محاسباتی به تفکیک مطالبات استقراری و جاری نمایش داده می‌شوند. فقط مجموع نهایی تامین‌کننده قابل ویرایش است.</p></div><a class="btn btn-outline-primary" href="/PaymentWizard/ExportPreview">Excel جزئیات رسیدها</a></div>
+<div class="wizard-steps"><div class="wizard-step done"><span class="num">✓</span><div><b>تنظیمات محاسبه</b><small>تکمیل شد</small></div></div><div class="wizard-step done"><span class="num">✓</span><div><b>دریافت اطلاعات</b><small>@(Model.ReceiptSource==PaymentReceiptSource.Excel?"Excel":"زیرسیستم انبار") · @Model.Rows.Count رسید</small></div></div><div class="wizard-step active"><span class="num">۳</span><div><b>محاسبه و تخصیص</b><small>کنترل بدهی و تخصیص نهایی</small></div></div></div>
+<div class="page-header"><div><div class="eyebrow">کنترل تخصیص قبل از ثبت</div><h2>تجمیع مبلغ تخصیص به تفکیک تامین‌کننده</h2><p class="text-muted">در این مرحله بدهی هر رسید و منبع محاسبه آن کنترل می‌شود و سپس تخصیص‌ها به تفکیک مطالبات استقراری و جاری نمایش داده می‌شوند. فقط مجموع نهایی تامین‌کننده قابل ویرایش است.</p></div><a class="btn btn-outline-primary" href="/PaymentWizard/ExportPreview">Excel جزئیات رسیدها</a></div>
 <div class="row g-3 mb-3">
  <div class="col-xl-3 col-md-6"><div class="payment-kpi"><span>تخصیص استقراری</span><strong>@initialTotal.ToString("N0")</strong><small>سهم @Model.CalculatedInitialSharePercent.ToString("0.##")٪</small></div></div>
  <div class="col-xl-3 col-md-6"><div class="payment-kpi"><span>تخصیص جاری</span><strong>@currentTotal.ToString("N0")</strong><small>سهم @Model.CalculatedCurrentSharePercent.ToString("0.##")٪</small></div></div>
  <div class="col-xl-3 col-md-6"><div class="payment-kpi"><span>مجموع تخصیص</span><strong id="allocationTotal">@total.ToString("N0")</strong><small>بودجه اولیه @Model.TotalAllocationBudget.ToString("N0") ریال</small></div></div>
  <div class="col-xl-3 col-md-6"><div class="payment-kpi"><span>بودجه آزاد</span><strong id="freeBudget">@remainingBudget.ToString("N0")</strong><small id="budgetStatus">قابل استفاده</small></div></div>
 </div>
-<div class="info-box mb-3"><b>قواعد مبلغ:</b> تخصیص‌ها مضربی از @Model.AllocationRounding.ToString("N0") ریال هستند. در صورت ویرایش مجموع یک تامین‌کننده نیز تفکیک جاری/استقراری مجدداً با سهم‌های سیستم و محدودیت مانده هر منبع محاسبه می‌شود.</div>
+<div class="info-box mb-3"><b>منبع رسیدها:</b> @(Model.ReceiptSource==PaymentReceiptSource.Excel?"فایل Excel":"زیرسیستم انبار؛ کوئری اطلاعات رسیدهای خرید انبار") — <b>نحوه محاسبه مطالبات جاری:</b> @(Model.CurrentClaimCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList?"تعدادی بر اساس فهرست بها":"دریافت اطلاعات ریالی"). <b>قواعد مبلغ:</b> تخصیص‌ها مضربی از @Model.AllocationRounding.ToString("N0") ریال هستند. در صورت ویرایش مجموع یک تامین‌کننده نیز تفکیک جاری/استقراری مجدداً با سهم‌های سیستم و محدودیت مانده هر منبع محاسبه می‌شود.</div>
+<div class="table-panel mb-3">
+ <div class="panel-title"><div><h4>جزئیات رسیدها و مبنای بدهی</h4><span>این جدول در محاسبه نهایی مورد استفاده قرار گرفته است. برای رسیدهای فهرست بها روی مبلغ بدهی کلیک کنید.</span></div><a class="btn btn-outline-secondary" href="/PaymentWizard/ExportPreview">خروجی Excel</a></div>
+ <div class="table-responsive table-scroll"><table class="table modern-table sticky-header align-middle"><thead><tr><th>ردیف</th><th>رسید</th><th>انبار</th><th>کالا</th><th>تامین‌کننده</th><th>مقدار رسید</th><th>بدهی رسید</th><th>روش محاسبه</th><th>نرخ فهرست بها</th><th>تخصیص جاری</th><th>تخصیص استقراری</th><th>مجموع تخصیص</th></tr></thead><tbody>
+ @for(var i=0;i<Model.Rows.Count;i++){var r=Model.Rows[i];<tr><td>@(i+1)</td><td class="fw-bold">@r.ReceiptNo</td><td>@r.Warehouse</td><td>@r.PartTitle</td><td>@r.SupplierTitle</td><td>@r.ReceiptQuantity.ToString("N3")</td><td>@if(r.DebtCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList && r.PriceListItemId.HasValue){<button type="button" class="btn btn-link p-0 amount-emphasis debt-inspect-button" data-bs-toggle="modal" data-bs-target="#priceInspectModal" data-receipt="@r.ReceiptNo" data-part="@r.PartTitle" data-supplier="@r.SupplierTitle" data-date="@r.ReceiptDateJalali" data-qty="@r.ReceiptQuantity.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-price="@r.AppliedUnitPrice.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-from="@(r.AppliedPriceValidFrom.HasValue?PersianDateService.ToJalali(r.AppliedPriceValidFrom.Value):"")" data-to="@(r.AppliedPriceValidTo.HasValue?PersianDateService.ToJalali(r.AppliedPriceValidTo.Value):"")">@r.OriginalDebt.ToString("N0")</button>}else{@r.OriginalDebt.ToString("N0")}</td><td>@(r.DebtCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList?"تعدادی بر اساس فهرست بها":"دریافت اطلاعات ریالی")</td><td>@(r.AppliedUnitPrice>0?r.AppliedUnitPrice.ToString("N0"):"—")</td><td>@r.AllocatedCurrentAmount.ToString("N0")</td><td>@r.AllocatedInitialClaimAmount.ToString("N0")</td><td class="amount-emphasis">@r.AllocatedAmount.ToString("N0")</td></tr>}</tbody></table></div>
+</div>
 <form method="post" action="/PaymentWizard/UpdateSupplierAllocations" id="supplierAllocationForm">
 @Html.AntiForgeryToken()
 <div class="table-panel"><div class="panel-title"><div><h4>خلاصه تامین‌کنندگان</h4><span>مبلغ تخصیص‌یافته نهایی در ستون آخر قابل ویرایش است.</span></div><button class="btn btn-main" type="submit">ذخیره تخصیص نهایی</button></div>
@@ -25,7 +31,37 @@
 </tbody><tfoot><tr><th colspan="3">جمع</th><th>@groups.Sum(x=>x.Debt).ToString("N0")</th><th>@currentTotal.ToString("N0")</th><th>@initialTotal.ToString("N0")</th><th id="calculatedTotal">@calculatedTotal.ToString("N0")</th><th id="footerTotal">@total.ToString("N0")</th><th id="deltaTotal">۰</th></tr></table></div></div>
 </form>
 <div class="info-box mt-3"><b>حسابداری مطالبات:</b> پرداخت از مطالبات استقراری مستقیماً از فیلد مطالبات استقراری تامین‌کننده کم می‌شود؛ پرداخت از مطالبات جاری از مانده رسیدهای همان تامین‌کننده کم خواهد شد و سابقه هر دو نوع تخصیص در Snapshot نگهداری می‌شود.</div>
-<div class="step-actions"><a class="btn btn-outline-secondary" href="/PaymentWizard/Step2">← بازگشت و اصلاح امتیازها</a><form method="post" action="/PaymentWizard/Approve" onsubmit="return confirm('آیا مبالغ نهایی تامین‌کنندگان در پایگاه داده ثبت شوند؟');">@Html.AntiForgeryToken()<button class="btn btn-main btn-lg">تایید نهایی و ثبت پرداخت ✓</button></form></div>
+@if(Model.CurrentClaimCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList)
+{
+<div class="modal fade" id="priceInspectModal" tabindex="-1" aria-labelledby="priceInspectLabel" aria-hidden="true">
+ <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg">
+  <div class="modal-header"><h5 class="modal-title" id="priceInspectLabel">فرم مشاهده نرخ استفاده‌شده</h5><button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal" aria-label="بستن"></button></div>
+  <div class="modal-body"><form class="row g-3">
+   <div class="col-md-6"><label class="form-label">شماره رسید</label><input id="priceReceipt" class="form-control" readonly></div>
+   <div class="col-md-6"><label class="form-label">تاریخ رسید</label><input id="priceReceiptDate" class="form-control" readonly></div>
+   <div class="col-md-6"><label class="form-label">کالا</label><input id="pricePart" class="form-control" readonly></div>
+   <div class="col-md-6"><label class="form-label">تامین‌کننده</label><input id="priceSupplier" class="form-control" readonly></div>
+   <div class="col-md-4"><label class="form-label">مقدار رسید</label><input id="priceQty" class="form-control" readonly></div>
+   <div class="col-md-4"><label class="form-label">قیمت خرید (فی)</label><input id="priceUnit" class="form-control" readonly></div>
+   <div class="col-md-4"><label class="form-label">بدهی رسید</label><input id="priceDebt" class="form-control" readonly></div>
+   <div class="col-md-6"><label class="form-label">تاریخ شروع نرخ</label><input id="priceFrom" class="form-control" readonly></div>
+   <div class="col-md-6"><label class="form-label">تاریخ پایان نرخ</label><input id="priceTo" class="form-control" readonly></div>
+   <div class="col-12"><div class="info-box">در صورت هم‌پوشانی، این نرخ به‌عنوان آخرین قیمت معتبر در تاریخ رسید انتخاب شده است.</div></div>
+  </form></div>
+  <div class="modal-footer"><button type="button" class="btn btn-main" data-bs-dismiss="modal">بستن</button></div>
+ </div></div>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded",function(){
+ document.querySelectorAll(".debt-inspect-button").forEach(function(btn){btn.addEventListener("click",function(){
+  const ids={priceReceipt:"receipt",pricePart:"part",priceSupplier:"supplier",priceReceiptDate:"date",priceQty:"qty",priceUnit:"price",priceFrom:"from",priceTo:"to"};
+  Object.keys(ids).forEach(function(id){document.getElementById(id).value=btn.dataset[ids[id]]||"";});
+  const q=parseFloat(btn.dataset.qty||"0")||0,p=parseFloat(btn.dataset.price||"0")||0;
+  document.getElementById("priceDebt").value=new Intl.NumberFormat("fa-IR").format(Math.round(q*p));
+ });});
+});
+</script>
+}<div class="step-actions"><a class="btn btn-outline-secondary" href="/PaymentWizard/Step2">← بازگشت و اصلاح امتیازها</a><form method="post" action="/PaymentWizard/Approve" onsubmit="return confirm('آیا مبالغ نهایی تامین‌کنندگان در پایگاه داده ثبت شوند؟');">@Html.AntiForgeryToken()<button class="btn btn-main btn-lg">تایید نهایی و ثبت پرداخت ✓</button></form></div>
 <script>
 (function(){
  const fmt=n=>new Intl.NumberFormat('fa-IR',{maximumFractionDigits:0}).format(Math.round(n));

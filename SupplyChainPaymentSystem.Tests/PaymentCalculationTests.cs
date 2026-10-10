@@ -215,4 +215,88 @@ public class PaymentCalculationTests
         Assert.Equal(5_000_000,rows.Sum(x=>x.AllocatedAmount));
         Assert.True(rows.All(x=>x.AllocatedAmount%100_000==0));
     }
+
+    [Theory]
+    [InlineData("SELECT 1", true)]
+    [InlineData("WITH x AS (SELECT 1 AS A) SELECT A FROM x", true)]
+    [InlineData("UPDATE Parts SET Title='x'", false)]
+    [InlineData("SELECT 1; DELETE FROM Parts", false)]
+    public void InputQuery_AllowsOnlySingleReadOnlyStatement(string sql, bool expected)
+        => Assert.Equal(expected, InputQueryService.IsReadOnlyQuery(sql));
+
+    [Fact]
+    public void PaymentReceiptExcel_ParsesReceiptQuantity()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("رسیدها");
+        ws.Cell(1,1).Value="شماره رسید";
+        ws.Cell(1,2).Value="انبار";
+        ws.Cell(1,3).Value="نام کالا";
+        ws.Cell(1,4).Value="نام تامین کننده";
+        ws.Cell(1,5).Value="مقدار رسید";
+        ws.Cell(1,6).Value="مبلغ بدهی";
+        ws.Cell(1,7).Value="تاریخ رسید";
+        ws.Cell(2,1).Value="R-100";
+        ws.Cell(2,2).Value="انبار مرکزی";
+        ws.Cell(2,3).Value="کالا ۱";
+        ws.Cell(2,4).Value="تامین‌کننده ۱";
+        ws.Cell(2,5).Value=12.75m;
+        ws.Cell(2,6).Value=1000000m;
+        ws.Cell(2,7).Value="1405/01/15";
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position=0;
+
+        var rows = new ExcelService().ReadPaymentInvoices(ms, PersianDateService.Parse, out var errors);
+
+        Assert.Empty(errors);
+        var row = Assert.Single(rows);
+        Assert.Equal(12.75m, row.ReceiptQuantity);
+        Assert.Equal(1000000m, row.DebtAmount);
+    }
+
+    [Fact]
+    public void EfModel_DoesNotContainShadowForeignKeys()
+    {
+        var options = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<Indamin.Payment.Data.AppDbContext>()
+            .UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=ModelValidationOnly;Trusted_Connection=True;TrustServerCertificate=True")
+            .Options;
+
+        using var db = new Indamin.Payment.Data.AppDbContext(options);
+        var shadowForeignKeys = db.Model.GetEntityTypes()
+            .SelectMany(x => x.GetForeignKeys())
+            .SelectMany(x => x.Properties)
+            .Where(x => x.IsShadowProperty())
+            .Select(x => x.DeclaringType.ClrType.Name + "." + x.Name)
+            .Distinct()
+            .ToList();
+
+        Assert.Empty(shadowForeignKeys);
+    }
+
+
+    [Fact]
+    public void PriceDebtAdjustment_IsIdempotentAcrossRepeatedPriceChanges()
+    {
+        var first = SupplierPriceDebtAdjustmentService.CalculateAdjustmentDelta(10_000m, 0m, 100m, 120m);
+        Assert.Equal(2_000m, first);
+
+        var second = SupplierPriceDebtAdjustmentService.CalculateAdjustmentDelta(10_000m, first, 100m, 110m);
+        Assert.Equal(-1_000m, second);
+
+        var retry = SupplierPriceDebtAdjustmentService.CalculateAdjustmentDelta(10_000m, first + second, 100m, 110m);
+        Assert.Equal(0m, retry);
+    }
+
+    [Fact]
+    public void PriceDebtAdjustment_PreservesSupplierCreditWhenPriceFallsBelowPriorAllocations()
+    {
+        var outstanding = SupplierPriceDebtAdjustmentService.CalculateOutstandingBalance(
+            snapshotDebt: 10_000m,
+            adjustments: -2_000m,
+            previousAllocations: 9_000m,
+            currentAllocation: 0m);
+
+        Assert.Equal(-1_000m, outstanding);
+    }
 }

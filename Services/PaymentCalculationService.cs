@@ -17,8 +17,9 @@ public class PaymentCalculationService(AppDbContext db)
         var settings = await LoadSystemParametersAsync();
         s.SystemParameterValues = settings.ToDictionary(x => x.Key, x => x.Value.Value);
         ApplySystemSettingsToState(s, settings);
+        s.CurrentClaimCalculationMethod = (CurrentClaimCalculationMethod)(int)Value(settings, "CURRENT_CLAIM_CALC_METHOD", 1);
 
-        var parameters = await db.PaymentParameters.Where(x => x.IsActive)
+        var parameters = await db.PaymentParameters.Where(x => x.IsActive && x.Weight > 0)
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Title).AsNoTracking().ToListAsync();
 
         var totalWeight = parameters.Sum(x => x.Weight);
@@ -30,6 +31,17 @@ public class PaymentCalculationService(AppDbContext db)
         var mappings = await db.SupplierParts.Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
             .AsNoTracking().ToListAsync();
         var evaluations = await db.SupplierPartEvaluations.AsNoTracking().ToListAsync();
+        var pricesByMapping = new Dictionary<int, List<SupplierPriceListItem>>();
+        if (s.CurrentClaimCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList)
+        {
+            var mappingIds = mappings.Select(x => x.Id).ToList();
+            var prices = await db.SupplierPriceListItems.AsNoTracking()
+                .Where(x => mappingIds.Contains(x.SupplierPartId) && x.IsActive && x.PurchasePrice > 0)
+                .OrderByDescending(x => x.ValidFrom).ThenByDescending(x => x.Id)
+                .ToListAsync();
+            pricesByMapping = prices.GroupBy(x => x.SupplierPartId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+        }
 
         var partByName = parts.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
         var supplierByName = suppliers.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
@@ -41,22 +53,7 @@ public class PaymentCalculationService(AppDbContext db)
 
         var previousCurrent = await PreviousCurrentAsync();
         var aggregated = Aggregate(imported).ToList();
-        var remainingByKey = aggregated.ToDictionary(
-            x => KeyHash(x.ReceiptNo, x.Warehouse, x.PartTitle, x.SupplierTitle),
-            x => Math.Max(0, Math.Round(x.DebtAmount - previousCurrent.GetValueOrDefault(KeyHash(x.ReceiptNo, x.Warehouse, x.PartTitle, x.SupplierTitle)), 2)));
-
-        var currentBySupplier = aggregated.GroupBy(x => Normalize(x.SupplierTitle)).ToDictionary(
-            g => g.Key,
-            g => g.Sum(x => remainingByKey[KeyHash(x.ReceiptNo, x.Warehouse, x.PartTitle, x.SupplierTitle)]));
-
-        var initialBySupplier = suppliers.ToDictionary(x => x.Id, x => x.InitialClaimAmount);
-        var currentBySupplierId = supplierByName.Where(x => initialBySupplier.ContainsKey(x.Value.Id))
-            .ToDictionary(x => x.Value.Id, x => currentBySupplier.GetValueOrDefault(x.Key));
-        var totalCurrentOutstanding = currentBySupplierId.Values.Sum();
-        var totalOutstandingForScore = totalCurrentOutstanding + suppliers.Sum(x => x.InitialClaimAmount);
-
         var rows = new List<PaymentCalculationRow>();
-        var totalImported = imported.Sum(x => x.DebtAmount);
 
         foreach (var x in aggregated)
         {
@@ -69,9 +66,29 @@ public class PaymentCalculationService(AppDbContext db)
 
             var key = KeyHash(x.ReceiptNo, x.Warehouse, part.Title, supplier.Title);
             var prior = previousCurrent.GetValueOrDefault(key);
-            var remaining = Math.Max(0, Math.Round(x.DebtAmount - prior, 2));
+            var debtAmount = x.DebtAmount;
+            SupplierPriceListItem? price = null;
+            if (s.CurrentClaimCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList)
+            {
+                if (!pricesByMapping.TryGetValue(mapping.Id, out var candidatePrices))
+                    throw new InvalidOperationException($"برای کالا «{part.Title}» و تامین‌کننده «{supplier.Title}» هیچ فهرست بهای ثبت‌شده‌ای وجود ندارد.");
+                price = candidatePrices
+                    .Where(p => p.ValidFrom.Date <= x.ReceiptDate.Date && p.ValidTo.Date >= x.ReceiptDate.Date)
+                    .OrderByDescending(p => p.ValidFrom).ThenByDescending(p => p.Id)
+                    .FirstOrDefault();
+                if (x.ReceiptQuantity <= 0)
+                    throw new InvalidOperationException($"مقدار رسید «{x.ReceiptNo}» برای کالا «{part.Title}» باید بزرگ‌تر از صفر باشد.");
+                if (price is null)
+                    throw new InvalidOperationException($"برای کالا «{part.Title}» و تامین‌کننده «{supplier.Title}» در تاریخ رسید {PersianDateService.ToJalali(x.ReceiptDate)} قیمت معتبر در فهرست بها یافت نشد.");
+                debtAmount = Math.Round(x.ReceiptQuantity * price.PurchasePrice, 2);
+            }
+            else if (debtAmount <= 0)
+            {
+                throw new InvalidOperationException($"مبلغ بدهی رسید «{x.ReceiptNo}» باید بزرگ‌تر از صفر باشد.");
+            }
+            var remaining = Math.Max(0, Math.Round(debtAmount - prior, 2));
             var age = (s.CalcDate() - x.ReceiptDate.Date).Days;
-            var supplierCurrent = currentBySupplierId.GetValueOrDefault(supplier.Id);
+            var supplierCurrent = 0m;
             var supplierInitial = supplier.InitialClaimAmount;
 
             var row = new PaymentCalculationRow
@@ -83,7 +100,13 @@ public class PaymentCalculationService(AppDbContext db)
                 SupplierTitle = supplier.Title,
                 PartId = part.Id,
                 SupplierId = supplier.Id,
-                OriginalDebt = x.DebtAmount,
+                ReceiptQuantity = x.ReceiptQuantity,
+                DebtCalculationMethod = s.CurrentClaimCalculationMethod,
+                AppliedUnitPrice = price?.PurchasePrice ?? 0m,
+                PriceListItemId = price?.Id,
+                AppliedPriceValidFrom = price?.ValidFrom,
+                AppliedPriceValidTo = price?.ValidTo,
+                OriginalDebt = debtAmount,
                 ReceiptDate = x.ReceiptDate.Date,
                 ReceiptDateJalali = PersianDateService.ToJalali(x.ReceiptDate),
                 ContractSettlementDays = mapping.ContractSettlementDays,
@@ -115,7 +138,7 @@ public class PaymentCalculationService(AppDbContext db)
                 }
                 else if (parameter.ScoringMethod == ParameterScoringMethod.DebtAmount)
                 {
-                    raw = SupplierDebtAmountScore(supplierCurrent + supplierInitial, totalOutstandingForScore);
+                    raw = 1m;
                     source = "محاسبه خودکار";
                 }
                 else
@@ -145,13 +168,137 @@ public class PaymentCalculationService(AppDbContext db)
             rows.Add(row);
         }
 
+        var currentBySupplierId = rows.Where(x => x.SupplierId.HasValue)
+            .GroupBy(x => x.SupplierId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.RemainingDebt));
+        var totalCurrentOutstanding = currentBySupplierId.Values.Sum();
+        var totalOutstandingForScore = totalCurrentOutstanding + suppliers.Sum(x => x.InitialClaimAmount);
+        foreach (var row in rows)
+        {
+            var supplierInitial = row.SupplierInitialClaimAmount;
+            var supplierCurrent = currentBySupplierId.GetValueOrDefault(row.SupplierId ?? 0);
+            row.SupplierOutstandingDebt = supplierCurrent + supplierInitial;
+            foreach (var score in row.Scores)
+            {
+                var parameter = parameters.FirstOrDefault(x => x.Id == score.ParameterId);
+                if (parameter?.ScoringMethod == ParameterScoringMethod.DebtAmount)
+                {
+                    score.Score = SupplierDebtAmountScore(row.SupplierOutstandingDebt, totalOutstandingForScore);
+                    score.Contribution = Math.Round(score.Score * score.Weight / 100m, 6);
+                    score.Source = "محاسبه خودکار";
+                }
+            }
+            row.WeightedScore = row.Scores.Sum(x => x.Contribution);
+        }
+
         s.Parameters = Snapshot(parameters);
         s.Rows = rows;
-        s.ImportedDebt = totalImported;
+        s.ImportedReceipts = imported.ToList();
+        s.ImportedDebt = rows.Sum(x => x.OriginalDebt);
         s.RemainingDebt = rows.Sum(x => x.RemainingDebt);
         AllocateCalculatedBudget(s.TotalAllocationBudget, rows, s.CalculatedInitialSharePercent, s.CalculatedCurrentSharePercent, s.MinimumEffectiveDebtAge, s.MinimumAllocationAmount, s.AllocationRounding);
         s.Step = 2;
         return s;
+    }
+
+    public async Task RecalculateCurrentDebtsAsync(PaymentWizardState s)
+    {
+        if (s.Rows.Count == 0) return;
+
+        var imported = Aggregate(s.ImportedReceipts ?? []).ToDictionary(
+            x => KeyHash(x.ReceiptNo, x.Warehouse, x.PartTitle, x.SupplierTitle),
+            x => x);
+        if (imported.Count == 0)
+            throw new InvalidOperationException("داده خام رسیدهای این محاسبه در نشست موجود نیست؛ اطلاعات رسیدها را مجدداً دریافت کنید.");
+
+        var previous = await PreviousCurrentAsync();
+        var mappingByPair = await db.SupplierParts.AsNoTracking()
+            .Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
+            .Select(x => new { x.Id, x.PartId, x.SupplierId })
+            .ToListAsync();
+        var mappingIdsByPair = mappingByPair.ToDictionary(x => (x.PartId, x.SupplierId), x => x.Id);
+        Dictionary<int, List<SupplierPriceListItem>> pricesByMapping = [];
+        if (s.CurrentClaimCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList)
+        {
+            var mappingIds = mappingIdsByPair.Values.Distinct().ToList();
+            var prices = await db.SupplierPriceListItems.AsNoTracking()
+                .Where(x => mappingIds.Contains(x.SupplierPartId))
+                .OrderByDescending(x => x.ValidFrom).ThenByDescending(x => x.Id)
+                .ToListAsync();
+            pricesByMapping = prices.GroupBy(x => x.SupplierPartId).ToDictionary(g => g.Key, g => g.ToList());
+        }
+
+        foreach (var row in s.Rows)
+        {
+            var key = KeyHash(row.ReceiptNo, row.Warehouse, row.PartTitle, row.SupplierTitle);
+            if (!imported.TryGetValue(key, out var source))
+                throw new InvalidOperationException($"منبع رسید «{row.ReceiptNo}» در داده خام محاسبه پیدا نشد.");
+
+            row.ReceiptQuantity = source.ReceiptQuantity;
+            row.DebtCalculationMethod = s.CurrentClaimCalculationMethod;
+            row.PreviousAllocated = previous.GetValueOrDefault(key);
+
+            SupplierPriceListItem? price = null;
+            if (s.CurrentClaimCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList)
+            {
+                if (!row.PartId.HasValue || !row.SupplierId.HasValue || !mappingIdsByPair.TryGetValue((row.PartId.Value, row.SupplierId.Value), out var mappingId))
+                    throw new InvalidOperationException($"ارتباط کالا–تامین‌کننده برای رسید «{row.ReceiptNo}» یافت نشد.");
+                if (!pricesByMapping.TryGetValue(mappingId, out var candidatePrices))
+                    throw new InvalidOperationException($"برای کالا «{row.PartTitle}» و تامین‌کننده «{row.SupplierTitle}» فهرست بها تعریف نشده است.");
+                price = candidatePrices
+                    .Where(x => x.ValidFrom.Date <= row.ReceiptDate.Date && x.ValidTo.Date >= row.ReceiptDate.Date)
+                    .OrderByDescending(x => x.ValidFrom).ThenByDescending(x => x.Id)
+                    .FirstOrDefault();
+                if (row.ReceiptQuantity <= 0)
+                    throw new InvalidOperationException($"مقدار رسید «{row.ReceiptNo}» باید بزرگ‌تر از صفر باشد.");
+                if (price is null)
+                    throw new InvalidOperationException($"برای کالا «{row.PartTitle}» و تامین‌کننده «{row.SupplierTitle}» در تاریخ رسید {row.ReceiptDateJalali} قیمت معتبر در فهرست بها یافت نشد.");
+                row.AppliedUnitPrice = price.PurchasePrice;
+                row.PriceListItemId = price.Id;
+                row.AppliedPriceValidFrom = price.ValidFrom;
+                row.AppliedPriceValidTo = price.ValidTo;
+                row.OriginalDebt = Math.Round(row.ReceiptQuantity * price.PurchasePrice, 2);
+            }
+            else
+            {
+                row.AppliedUnitPrice = 0;
+                row.PriceListItemId = null;
+                row.AppliedPriceValidFrom = null;
+                row.AppliedPriceValidTo = null;
+                row.OriginalDebt = Math.Round(source.DebtAmount, 2);
+                if (row.OriginalDebt <= 0)
+                    throw new InvalidOperationException($"مبلغ بدهی رسید «{row.ReceiptNo}» باید بزرگ‌تر از صفر باشد.");
+            }
+
+            row.RemainingDebt = Math.Max(0, Math.Round(row.OriginalDebt - row.PreviousAllocated, 2));
+        }
+
+        var currentBySupplier = s.Rows.Where(x => x.SupplierId.HasValue)
+            .GroupBy(x => x.SupplierId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.RemainingDebt));
+        var initialBySupplier = s.Rows.Where(x => x.SupplierId.HasValue)
+            .GroupBy(x => x.SupplierId!.Value)
+            .ToDictionary(g => g.Key, g => g.First().SupplierInitialClaimAmount);
+        var totalOutstanding = currentBySupplier.Values.Sum() + initialBySupplier.Values.Sum();
+
+        foreach (var row in s.Rows)
+        {
+            row.SupplierOutstandingDebt = currentBySupplier.GetValueOrDefault(row.SupplierId ?? 0) + initialBySupplier.GetValueOrDefault(row.SupplierId ?? 0);
+            foreach (var score in row.Scores)
+            {
+                var parameter = s.Parameters.FirstOrDefault(x => x.Id == score.ParameterId);
+                if (parameter?.ScoringMethod == ParameterScoringMethod.DebtAmount)
+                {
+                    score.Score = SupplierDebtAmountScore(row.SupplierOutstandingDebt, totalOutstanding);
+                    score.Contribution = Math.Round(score.Score * score.Weight / 100m, 6);
+                    score.Source = "محاسبه خودکار";
+                }
+            }
+        }
+
+        s.ImportedDebt = s.Rows.Sum(x => x.OriginalDebt);
+        s.RemainingDebt = s.Rows.Sum(x => x.RemainingDebt);
+        await RecalculateAllocationAsync(s);
     }
 
     public Task RecalculateAllocationAsync(PaymentWizardState s)
@@ -207,26 +354,63 @@ public class PaymentCalculationService(AppDbContext db)
             .OrderBy(x => x.PaymentRunId).ThenBy(x => x.Id).AsNoTracking().ToListAsync();
 
         var latest = invoices.GroupBy(x => x.PaymentKeyHash).Select(g => g.Last()).ToList();
-        return latest.Select(x =>
+        var invoiceIds = latest.Select(x => x.Id).Distinct().ToList();
+        var adjustments = invoiceIds.Count == 0
+            ? new List<SupplierPriceDebtAdjustment>()
+            : await db.SupplierPriceDebtAdjustments.AsNoTracking()
+                .Where(x => x.PaymentRunInvoiceId.HasValue && invoiceIds.Contains(x.PaymentRunInvoiceId.Value))
+                .ToListAsync();
+        var adjustmentByInvoice = adjustments.GroupBy(x => x.PaymentRunInvoiceId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.AmountChange));
+
+        var balances = latest.Select(x =>
         {
+            var adjustment = adjustmentByInvoice.GetValueOrDefault(x.Id);
             var currentAllocation = x.AllocatedCurrentAmount > 0
                 ? x.AllocatedCurrentAmount
-                : x.AllocatedInitialClaimAmount > 0
-                    ? 0
-                    : x.AllocatedAmount;
-            return new PaymentCurrentReceiptSnapshot(
-                x.PaymentKeyHash,
-                x.ReceiptNo,
-                x.Warehouse,
-                x.PartTitle,
-                x.SupplierTitle,
-                x.PartId,
-                x.SupplierId,
-                x.OriginalDebt,
-                x.ReceiptDate,
-                Math.Max(0, x.RemainingDebt - currentAllocation),
-                x.ContractSettlementDays);
-        }).Where(x => x.RemainingDebt > 0 && x.SupplierId.HasValue).ToList();
+                : x.AllocatedInitialClaimAmount > 0 ? 0m : x.AllocatedAmount;
+            return new
+            {
+                Invoice = x,
+                Adjustment = adjustment,
+                EffectiveRemaining = Math.Round(x.RemainingDebt + adjustment - currentAllocation, 2)
+            };
+        }).Where(x => x.Invoice.SupplierId.HasValue).ToList();
+
+        // Price reductions can make previously paid receipts negative. Carry that credit
+        // against the supplier's oldest positive receipt instead of silently dropping it.
+        var creditOffsetByKey = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        foreach (var supplierGroup in balances.GroupBy(x => x.Invoice.SupplierId!.Value))
+        {
+            var credit = supplierGroup.Where(x => x.EffectiveRemaining < 0)
+                .Sum(x => -x.EffectiveRemaining);
+            foreach (var row in supplierGroup.Where(x => x.EffectiveRemaining > 0)
+                         .OrderBy(x => x.Invoice.ReceiptDate).ThenBy(x => x.Invoice.Id))
+            {
+                if (credit <= 0) break;
+                var offset = Math.Min(credit, row.EffectiveRemaining);
+                creditOffsetByKey[row.Invoice.PaymentKeyHash] = offset;
+                credit -= offset;
+            }
+        }
+
+        return balances.Select(x => new PaymentCurrentReceiptSnapshot(
+            x.Invoice.PaymentKeyHash,
+            x.Invoice.ReceiptNo,
+            x.Invoice.Warehouse,
+            x.Invoice.PartTitle,
+            x.Invoice.SupplierTitle,
+            x.Invoice.PartId,
+            x.Invoice.SupplierId,
+            Math.Round(x.Invoice.OriginalDebt + x.Adjustment, 2),
+            x.Invoice.ReceiptDate,
+            Math.Max(0, x.EffectiveRemaining - creditOffsetByKey.GetValueOrDefault(x.Invoice.PaymentKeyHash)),
+            x.Invoice.ContractSettlementDays,
+            x.Invoice.DebtCalculationMethod,
+            x.Invoice.PriceListItemId,
+            x.Invoice.AppliedUnitPrice))
+            .Where(x => x.RemainingDebt > 0 && x.SupplierId.HasValue)
+            .ToList();
     }
 
     public async Task<Dictionary<string, SystemParameter>> LoadSystemParametersAsync()
@@ -524,7 +708,7 @@ public class PaymentCalculationService(AppDbContext db)
 
     static IEnumerable<ImportedPaymentInvoice> Aggregate(IReadOnlyList<ImportedPaymentInvoice> rows) =>
         rows.GroupBy(x => new { R = Normalize(x.ReceiptNo), W = Normalize(x.Warehouse), P = Normalize(x.PartTitle), S = Normalize(x.SupplierTitle) })
-            .Select(g => new ImportedPaymentInvoice(g.Min(x => x.RowNumber), g.First().ReceiptNo, g.First().Warehouse, g.First().PartTitle, g.First().SupplierTitle, g.Sum(x => x.DebtAmount), g.Min(x => x.ReceiptDate)));
+            .Select(g => new ImportedPaymentInvoice(g.Min(x => x.RowNumber), g.First().ReceiptNo, g.First().Warehouse, g.First().PartTitle, g.First().SupplierTitle, g.Sum(x => x.ReceiptQuantity), g.Sum(x => x.DebtAmount), g.Min(x => x.ReceiptDate)));
 
     static string Normalize(string value) => (value ?? "").Trim().Replace("ي", "ی").Replace("ك", "ک").ToLowerInvariant();
 
@@ -548,7 +732,10 @@ public record PaymentCurrentReceiptSnapshot(
     decimal OriginalDebt,
     DateTime ReceiptDate,
     decimal RemainingDebt,
-    int ContractSettlementDays);
+    int ContractSettlementDays,
+    CurrentClaimCalculationMethod DebtCalculationMethod,
+    long? PriceListItemId,
+    decimal AppliedUnitPrice);
 
 public static class PaymentWizardStateExtensions
 {
