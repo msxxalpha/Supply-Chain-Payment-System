@@ -17,11 +17,25 @@ public class ReportsController(FinancialReportingService reports, AppDbContext d
     }
 
     [Authorize(Policy = SecurityPermissions.AssessorPerformance)]
-    public async Task<IActionResult> AssessorPerformance(DateTime? from, DateTime? to)
+    public async Task<IActionResult> AssessorPerformance(string? from, string? to)
     {
-        var now = DateTime.UtcNow;
-        var start = from?.Date.ToUniversalTime();
-        var end = to?.Date.AddDays(1).ToUniversalTime();
+        DateTime? fromDate;
+        DateTime? toDate;
+        try
+        {
+            fromDate = string.IsNullOrWhiteSpace(from) ? null : PersianDateService.Parse(from).Date;
+            toDate = string.IsNullOrWhiteSpace(to) ? null : PersianDateService.Parse(to).Date;
+            if (fromDate.HasValue && toDate.HasValue && fromDate.Value.Date > toDate.Value.Date)
+                throw new ArgumentException("تاریخ شروع نباید بعد از تاریخ پایان باشد.");
+        }
+        catch (ArgumentException ex)
+        {
+            TempData["Error"] = ex.Message;
+            return RedirectToAction(nameof(AssessorPerformance));
+        }
+
+        var start = fromDate?.Date.ToUniversalTime();
+        var end = toDate?.Date.AddDays(1).ToUniversalTime();
 
         var sessionsQuery = db.UserActivitySessions.AsNoTracking()
             .Include(x => x.User)
@@ -75,7 +89,7 @@ public class ReportsController(FinancialReportingService reports, AppDbContext d
                 score?.LastScored);
         }).OrderByDescending(x => x.TotalScoringSeconds).ThenBy(x => x.DisplayName).ToList();
 
-        var vm = new AssessorPerformanceVm(rows, from, to, rows.Sum(x => x.SessionCount),
+        var vm = new AssessorPerformanceVm(rows, fromDate, toDate, rows.Sum(x => x.SessionCount),
             rows.Sum(x => x.ScoreCount), rows.Sum(x => x.TotalScoringSeconds));
         return View(vm);
     }
