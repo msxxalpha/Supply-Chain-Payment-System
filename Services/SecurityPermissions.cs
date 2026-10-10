@@ -53,7 +53,7 @@ public static class SecurityPermissions{
   ["SYS_ADMIN"]=AllCodes,
   ["FINANCE_OPERATOR"]=["Dashboard.View","Payment.Calculate","Payment.NonCalculated","Payment.History","Payment.Approve","Payment.OrderCreate","Payment.OrderDownload","Reports.View","Reports.SupplierOverview","Reports.PriceListAnalysis"],
   ["FINANCE_VIEWER"]=["Dashboard.View","Payment.History","Payment.OrderDownload","Reports.View","Reports.SupplierOverview","Reports.PriceListAnalysis"],
-  ["MASTER_DATA"]=["Dashboard.View","Setup.Parameters","Setup.SystemParameters","Setup.Parts","Setup.Suppliers","Setup.Mappings","Setup.Evaluations","Setup.Lookups","Setup.Queries","Setup.SupplierPriceList"],
+  ["MASTER_DATA"]=["Dashboard.View","Setup.Parameters","Setup.SystemParameters","Setup.Parts","Setup.Suppliers","Setup.Mappings","Setup.Evaluations","Setup.Lookups","Setup.Queries","Setup.SupplierPriceList","Reports.PriceListAnalysis"],
   ["SUPPLIER_PART_ASSESSOR"]=["SupplierPartEvaluation.View"]
  };
 }
