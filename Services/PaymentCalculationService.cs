@@ -354,29 +354,63 @@ public class PaymentCalculationService(AppDbContext db)
             .OrderBy(x => x.PaymentRunId).ThenBy(x => x.Id).AsNoTracking().ToListAsync();
 
         var latest = invoices.GroupBy(x => x.PaymentKeyHash).Select(g => g.Last()).ToList();
-        return latest.Select(x =>
+        var invoiceIds = latest.Select(x => x.Id).Distinct().ToList();
+        var adjustments = invoiceIds.Count == 0
+            ? new List<SupplierPriceDebtAdjustment>()
+            : await db.SupplierPriceDebtAdjustments.AsNoTracking()
+                .Where(x => x.PaymentRunInvoiceId.HasValue && invoiceIds.Contains(x.PaymentRunInvoiceId.Value))
+                .ToListAsync();
+        var adjustmentByInvoice = adjustments.GroupBy(x => x.PaymentRunInvoiceId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.AmountChange));
+
+        var balances = latest.Select(x =>
         {
+            var adjustment = adjustmentByInvoice.GetValueOrDefault(x.Id);
             var currentAllocation = x.AllocatedCurrentAmount > 0
                 ? x.AllocatedCurrentAmount
-                : x.AllocatedInitialClaimAmount > 0
-                    ? 0
-                    : x.AllocatedAmount;
-            return new PaymentCurrentReceiptSnapshot(
-                x.PaymentKeyHash,
-                x.ReceiptNo,
-                x.Warehouse,
-                x.PartTitle,
-                x.SupplierTitle,
-                x.PartId,
-                x.SupplierId,
-                x.OriginalDebt,
-                x.ReceiptDate,
-                Math.Max(0, x.RemainingDebt - currentAllocation),
-                x.ContractSettlementDays,
-                x.DebtCalculationMethod,
-                x.PriceListItemId,
-                x.AppliedUnitPrice);
-        }).Where(x => x.RemainingDebt > 0 && x.SupplierId.HasValue).ToList();
+                : x.AllocatedInitialClaimAmount > 0 ? 0m : x.AllocatedAmount;
+            return new
+            {
+                Invoice = x,
+                Adjustment = adjustment,
+                EffectiveRemaining = Math.Round(x.RemainingDebt + adjustment - currentAllocation, 2)
+            };
+        }).Where(x => x.Invoice.SupplierId.HasValue).ToList();
+
+        // Price reductions can make previously paid receipts negative. Carry that credit
+        // against the supplier's oldest positive receipt instead of silently dropping it.
+        var creditOffsetByKey = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        foreach (var supplierGroup in balances.GroupBy(x => x.Invoice.SupplierId!.Value))
+        {
+            var credit = supplierGroup.Where(x => x.EffectiveRemaining < 0)
+                .Sum(x => -x.EffectiveRemaining);
+            foreach (var row in supplierGroup.Where(x => x.EffectiveRemaining > 0)
+                         .OrderBy(x => x.Invoice.ReceiptDate).ThenBy(x => x.Invoice.Id))
+            {
+                if (credit <= 0) break;
+                var offset = Math.Min(credit, row.EffectiveRemaining);
+                creditOffsetByKey[row.Invoice.PaymentKeyHash] = offset;
+                credit -= offset;
+            }
+        }
+
+        return balances.Select(x => new PaymentCurrentReceiptSnapshot(
+            x.Invoice.PaymentKeyHash,
+            x.Invoice.ReceiptNo,
+            x.Invoice.Warehouse,
+            x.Invoice.PartTitle,
+            x.Invoice.SupplierTitle,
+            x.Invoice.PartId,
+            x.Invoice.SupplierId,
+            Math.Round(x.Invoice.OriginalDebt + x.Adjustment, 2),
+            x.Invoice.ReceiptDate,
+            Math.Max(0, x.EffectiveRemaining - creditOffsetByKey.GetValueOrDefault(x.Invoice.PaymentKeyHash)),
+            x.Invoice.ContractSettlementDays,
+            x.Invoice.DebtCalculationMethod,
+            x.Invoice.PriceListItemId,
+            x.Invoice.AppliedUnitPrice))
+            .Where(x => x.RemainingDebt > 0 && x.SupplierId.HasValue)
+            .ToList();
     }
 
     public async Task<Dictionary<string, SystemParameter>> LoadSystemParametersAsync()

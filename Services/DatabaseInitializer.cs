@@ -89,6 +89,67 @@ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_PaymentRunInvoices_Price
  CREATE INDEX IX_PaymentRunInvoices_PriceListItemId ON dbo.PaymentRunInvoices(PriceListItemId);
 """);
  }
+ public static async Task EnsurePriceDebtAdjustmentSchemaAsync(AppDbContext db)
+ {
+  await db.Database.ExecuteSqlRawAsync("""
+IF OBJECT_ID(N'dbo.SupplierPriceListChangeBatches',N'U') IS NULL
+BEGIN
+ CREATE TABLE dbo.SupplierPriceListChangeBatches(
+  BatchKey nvarchar(32) NOT NULL CONSTRAINT PK_SupplierPriceListChangeBatches PRIMARY KEY,
+  ChangeType nvarchar(100) NOT NULL,
+  Description nvarchar(1000) NOT NULL,
+  SupplierId int NULL,
+  SupplierTitleSnapshot nvarchar(300) NOT NULL DEFAULT(N''),
+  AppliedBy int NOT NULL,
+  AppliedByNameSnapshot nvarchar(300) NOT NULL DEFAULT(N''),
+  AppliedAt datetime2 NOT NULL DEFAULT(sysutcdatetime()),
+  AffectedReceiptCount int NOT NULL DEFAULT(0),
+  NetDebtChange decimal(20,2) NOT NULL DEFAULT(0)
+ );
+END
+IF OBJECT_ID(N'dbo.SupplierPriceDebtAdjustments',N'U') IS NULL
+BEGIN
+ CREATE TABLE dbo.SupplierPriceDebtAdjustments(
+  Id bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_SupplierPriceDebtAdjustments PRIMARY KEY,
+  BatchKey nvarchar(32) NOT NULL,
+  PaymentKeyHash nvarchar(64) NOT NULL DEFAULT(N''),
+  PaymentRunInvoiceId bigint NULL,
+  ReceiptNo nvarchar(150) NOT NULL,
+  Warehouse nvarchar(300) NOT NULL,
+  PartTitle nvarchar(300) NOT NULL,
+  SupplierTitle nvarchar(300) NOT NULL,
+  SupplierId int NOT NULL,
+  PartId int NOT NULL,
+  ReceiptDate date NOT NULL,
+  ReceiptQuantity decimal(20,6) NOT NULL,
+  PreviousPriceListItemId bigint NULL,
+  NewPriceListItemId bigint NULL,
+  PreviousUnitPrice decimal(20,2) NOT NULL,
+  NewUnitPrice decimal(20,2) NOT NULL,
+  PreviousDebtAmount decimal(20,2) NOT NULL,
+  NewDebtAmount decimal(20,2) NOT NULL,
+  AmountChange decimal(20,2) NOT NULL,
+  AppliedBy int NOT NULL,
+  AppliedAt datetime2 NOT NULL DEFAULT(sysutcdatetime()),
+  Reason nvarchar(1000) NOT NULL DEFAULT(N''),
+  CONSTRAINT FK_SupplierPriceDebtAdjustments_Batch FOREIGN KEY(BatchKey)
+   REFERENCES dbo.SupplierPriceListChangeBatches(BatchKey) ON DELETE CASCADE,
+  CONSTRAINT FK_SupplierPriceDebtAdjustments_Invoice FOREIGN KEY(PaymentRunInvoiceId)
+   REFERENCES dbo.PaymentRunInvoices(Id) ON DELETE SET NULL
+ );
+END
+IF COL_LENGTH(N'dbo.SupplierPriceDebtAdjustments',N'PaymentKeyHash') IS NULL
+ ALTER TABLE dbo.SupplierPriceDebtAdjustments ADD PaymentKeyHash nvarchar(64) NOT NULL CONSTRAINT DF_SupplierPriceDebtAdjustments_PaymentKeyHash DEFAULT(N'');
+IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_SupplierPriceDebtAdjustments_PaymentKeyHash' AND object_id=OBJECT_ID(N'dbo.SupplierPriceDebtAdjustments'))
+ CREATE INDEX IX_SupplierPriceDebtAdjustments_PaymentKeyHash ON dbo.SupplierPriceDebtAdjustments(PaymentKeyHash);
+IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_SupplierPriceDebtAdjustments_Invoice' AND object_id=OBJECT_ID(N'dbo.SupplierPriceDebtAdjustments'))
+ CREATE INDEX IX_SupplierPriceDebtAdjustments_Invoice ON dbo.SupplierPriceDebtAdjustments(PaymentRunInvoiceId);
+IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'UX_SupplierPriceDebtAdjustments_BatchInvoice' AND object_id=OBJECT_ID(N'dbo.SupplierPriceDebtAdjustments'))
+ CREATE UNIQUE INDEX UX_SupplierPriceDebtAdjustments_BatchInvoice ON dbo.SupplierPriceDebtAdjustments(BatchKey,PaymentRunInvoiceId);
+IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_SupplierPriceListChangeBatches_AppliedAt' AND object_id=OBJECT_ID(N'dbo.SupplierPriceListChangeBatches'))
+ CREATE INDEX IX_SupplierPriceListChangeBatches_AppliedAt ON dbo.SupplierPriceListChangeBatches(AppliedAt DESC);
+""");
+ }
  public static async Task EnsureSupplierPartAssessmentSchemaAsync(AppDbContext db){
   await db.Database.ExecuteSqlRawAsync("""
 IF OBJECT_ID(N'dbo.SupplierPartAssessorEvaluations',N'U') IS NULL

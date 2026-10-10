@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Indamin.Payment.Controllers;
 
 [Authorize(Policy = SecurityPermissions.SetupSupplierPriceList)]
-public class SupplierPriceListController(AppDbContext db, ExcelService excel) : Controller
+public class SupplierPriceListController(AppDbContext db, ExcelService excel, SupplierPriceDebtAdjustmentService debtAdjustments) : Controller
 {
     static int NormalizePageSize(int value) => value is 50 or 75 or 100 ? value : 25;
     int UserId => int.TryParse(User.FindFirst("UserId")?.Value, out var id) ? id : 0;
@@ -95,21 +95,12 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
             var from = PersianDateService.Parse(validFrom).Date;
             var to = PersianDateService.Parse(validTo).Date;
             ValidatePrice(price, from, to);
-            await DeactivateConflictingPricesAsync(mapping.Id, from, to, price, null);
-
-            db.SupplierPriceListItems.Add(new SupplierPriceListItem
-            {
-                SupplierPartId = mapping.Id,
-                PurchasePrice = Math.Round(price, 2),
-                ValidFrom = from,
-                ValidTo = to,
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            });
-            await db.SaveChangesAsync();
-            await LogAsync("CREATE", "SupplierPriceListItem", supplierPartId.ToString(), $"قیمت {price:N2} برای {mapping.Part!.Title} / {mapping.Supplier!.Title}");
-            TempData["Result"] = "رکورد فهرست بها ثبت شد.";
+            var result = await debtAdjustments.ApplyAsync(
+                Guid.NewGuid().ToString("N"), "ADD",
+                $"ثبت قیمت {price:N2} برای {mapping.Part!.Title} / {mapping.Supplier!.Title}",
+                new[] { new SupplierPriceMutation(mapping.Id, mapping.SupplierId, mapping.PartId, price, from, to) },
+                UserId, User.Identity?.Name ?? "");
+            TempData["Result"] = FormatAdjustmentResult("رکورد فهرست بها ثبت شد.", result);
         }
         catch (Exception ex)
         {
@@ -139,16 +130,12 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
             var from = PersianDateService.Parse(validFrom).Date;
             var to = PersianDateService.Parse(validTo).Date;
             ValidatePrice(price, from, to);
-            await DeactivateConflictingPricesAsync(row.SupplierPartId, from, to, price, row.Id);
-
-            row.PurchasePrice = Math.Round(price, 2);
-            row.IsActive = true;
-            row.ValidFrom = from;
-            row.ValidTo = to;
-            row.UpdatedAt = DateTime.UtcNow;
-            await db.SaveChangesAsync();
-            await LogAsync("UPDATE", "SupplierPriceListItem", id.ToString(), $"ویرایش نرخ {price:N2} برای {row.SupplierPart!.Part!.Title} / {row.SupplierPart.Supplier!.Title}");
-            TempData["Result"] = "رکورد فهرست بها به‌روزرسانی شد.";
+            var result = await debtAdjustments.ApplyAsync(
+                Guid.NewGuid().ToString("N"), "EDIT",
+                $"ویرایش نرخ {price:N2} برای {row.SupplierPart!.Part!.Title} / {row.SupplierPart.Supplier!.Title}",
+                new[] { new SupplierPriceMutation(row.SupplierPartId, row.SupplierPart.SupplierId, row.SupplierPart.PartId, price, from, to, id) },
+                UserId, User.Identity?.Name ?? "");
+            TempData["Result"] = FormatAdjustmentResult("رکورد فهرست بها به‌روزرسانی شد.", result);
         }
         catch (Exception ex)
         {
@@ -234,51 +221,21 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
                 .Where(x => x.IsActive)
                 .ToDictionary(x => $"{x.SupplierId}:{x.PartId}", x => x.Id);
 
+            var mutations = new List<SupplierPriceMutation>();
             foreach (var item in rows)
             {
                 if (!mappings.TryGetValue($"{item.SupplierId}:{item.PartId}", out var mappingId))
                     throw new InvalidOperationException($"ارتباط فعال تامین‌کننده و کالا برای سطر {item.RowNumber} پیدا نشد.");
-
-                var currentActive = await db.SupplierPriceListItems.FirstOrDefaultAsync(x =>
-                    x.SupplierPartId == mappingId &&
-                    x.ValidFrom == item.ValidFrom &&
-                    x.ValidTo == item.ValidTo &&
-                    x.IsActive);
-
-                if (currentActive != null && currentActive.PurchasePrice == item.PurchasePrice)
-                {
-                    currentActive.UpdatedAt = DateTime.UtcNow;
-                    continue;
-                }
-
-                var conflicting = await db.SupplierPriceListItems
-                    .Where(x => x.SupplierPartId == mappingId &&
-                                x.ValidFrom == item.ValidFrom &&
-                                x.ValidTo == item.ValidTo &&
-                                x.IsActive)
-                    .ToListAsync();
-                foreach (var old in conflicting)
-                {
-                    old.IsActive = false;
-                    old.UpdatedAt = DateTime.UtcNow;
-                }
-
-                db.SupplierPriceListItems.Add(new SupplierPriceListItem
-                {
-                    SupplierPartId = mappingId,
-                    PurchasePrice = item.PurchasePrice,
-                    ValidFrom = item.ValidFrom,
-                    ValidTo = item.ValidTo,
-                    IsActive = true,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                });
+                mutations.Add(new SupplierPriceMutation(
+                    mappingId, item.SupplierId, item.PartId, item.PurchasePrice,
+                    item.ValidFrom, item.ValidTo, SkipIfIdentical: true, RowNumber: item.RowNumber));
             }
 
-
-            await db.SaveChangesAsync();
-            await LogAsync("IMPORT", "SupplierPriceListItem", "EXCEL", $"ورود تجمیعی {rows.Count} ردیف فهرست بها");
-            TempData["Result"] = $"{rows.Count:N0} ردیف فهرست بها با موفقیت وارد/به‌روزرسانی شد.";
+            var result = await debtAdjustments.ApplyAsync(
+                Guid.NewGuid().ToString("N"), "IMPORT_EXCEL",
+                $"ورود تجمیعی {mutations.Count:N0} ردیف فهرست بها از Excel",
+                mutations, UserId, User.Identity?.Name ?? "");
+            TempData["Result"] = FormatAdjustmentResult($"{rows.Count:N0} ردیف فهرست بها بررسی و وارد/به‌روزرسانی شد.", result);
         }
         catch (Exception ex)
         {
@@ -301,6 +258,14 @@ public class SupplierPriceListController(AppDbContext db, ExcelService excel) : 
         return File(excel.SupplierPriceList(rows),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "supplier-price-list.xlsx");
+    }
+
+    static string FormatAdjustmentResult(string prefix, SupplierPriceAdjustmentApplyResult result)
+    {
+        if (result.AlreadyApplied) return prefix + " این عملیات قبلاً ثبت شده بود؛ از ثبت تکراری جلوگیری شد.";
+        if (result.AffectedReceiptCount == 0) return prefix + " رسید جاریِ ثبت‌شده‌ای نیاز به تعدیل بدهی نداشت.";
+        var change = result.NetDebtChange.ToString("+#,##0.##;-#,##0.##;0", System.Globalization.CultureInfo.InvariantCulture);
+        return $"{prefix} تعداد رسیدهای تعدیل‌شده: {result.AffectedReceiptCount:N0}؛ خالص تغییر بدهی: {change} ریال.";
     }
 
     async Task<bool> IsUsedAsync(long id) =>

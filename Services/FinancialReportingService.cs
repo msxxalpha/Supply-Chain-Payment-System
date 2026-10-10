@@ -174,7 +174,7 @@ public class FinancialReportingService(AppDbContext db)
                     .Where(x => ids.Contains(x.PaymentKeyHash))
                     .Sum(CurrentAllocation);
 
-                var originalForPart = g.Sum(x => x.OriginalDebt);
+                var originalForPart = g.Sum(x => x.OriginalDebt + x.PriceAdjustmentTotal);
                 var remainingForPart = g.Sum(CurrentRemaining);
                 return new SupplierPartFinanceRow(
                     supplier.Title, g.Key.PartTitle, g.Count(x => CurrentRemaining(x) > 0),
@@ -248,6 +248,31 @@ public class FinancialReportingService(AppDbContext db)
             .GroupBy(x => x.PaymentKeyHash)
             .Select(g => g.Last())
             .ToList();
+        var latestInvoiceIds = latestInvoices.Select(x => x.Id).Distinct().ToList();
+        var priceAdjustments = latestInvoiceIds.Count == 0
+            ? new List<SupplierPriceDebtAdjustment>()
+            : await db.SupplierPriceDebtAdjustments.AsNoTracking()
+                .Where(x => x.PaymentRunInvoiceId.HasValue && latestInvoiceIds.Contains(x.PaymentRunInvoiceId.Value))
+                .ToListAsync();
+        var adjustmentByInvoice = priceAdjustments.GroupBy(x => x.PaymentRunInvoiceId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.AmountChange));
+        foreach (var invoice in latestInvoices)
+            invoice.PriceAdjustmentTotal = adjustmentByInvoice.GetValueOrDefault(invoice.Id);
+
+        foreach (var supplierGroup in latestInvoices.Where(x => x.SupplierId.HasValue).GroupBy(x => x.SupplierId!.Value))
+        {
+            var credit = supplierGroup.Sum(x => Math.Min(0m,
+                x.RemainingDebt + x.PriceAdjustmentTotal - CurrentAllocation(x))) * -1m;
+            foreach (var invoice in supplierGroup.Where(x => x.RemainingDebt + x.PriceAdjustmentTotal - CurrentAllocation(x) > 0)
+                         .OrderBy(x => x.ReceiptDate).ThenBy(x => x.Id))
+            {
+                if (credit <= 0) break;
+                var available = invoice.RemainingDebt + invoice.PriceAdjustmentTotal - CurrentAllocation(invoice);
+                var offset = Math.Min(credit, available);
+                invoice.PriceCreditOffset = offset;
+                credit -= offset;
+            }
+        }
 
         var suppliers = await db.Suppliers.AsNoTracking()
             .Where(x => x.IsActive)
@@ -344,7 +369,7 @@ public class FinancialReportingService(AppDbContext db)
             var overdue = group.Count(x => CurrentRemaining(x) > 0 &&
                 x.ContractSettlementDays > 0 &&
                 x.DebtAgeDays > x.ContractSettlementDays);
-            var original = group.Sum(x => x.OriginalDebt);
+            var original = group.Sum(x => x.OriginalDebt + x.PriceAdjustmentTotal);
 
             result.Add(new PartFinanceRow(
                 group.Key.PartId ?? 0, group.Key.PartTitle, open,
@@ -507,7 +532,7 @@ public class FinancialReportingService(AppDbContext db)
             : x.AllocatedInitialClaimAmount > 0 ? 0 : x.AllocatedAmount;
 
     static decimal CurrentRemaining(PaymentRunInvoice x) =>
-        Math.Max(0, x.RemainingDebt - CurrentAllocation(x));
+        Math.Max(0, x.RemainingDebt + x.PriceAdjustmentTotal - CurrentAllocation(x) - x.PriceCreditOffset);
 
     record ReportingContext(
         List<PaymentRun> WorkflowRuns,

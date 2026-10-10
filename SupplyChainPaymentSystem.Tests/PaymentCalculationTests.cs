@@ -274,4 +274,29 @@ public class PaymentCalculationTests
         Assert.Empty(shadowForeignKeys);
     }
 
+
+    [Fact]
+    public void PriceDebtAdjustment_IsIdempotentAcrossRepeatedPriceChanges()
+    {
+        var first = SupplierPriceDebtAdjustmentService.CalculateAdjustmentDelta(10_000m, 0m, 100m, 120m);
+        Assert.Equal(2_000m, first);
+
+        var second = SupplierPriceDebtAdjustmentService.CalculateAdjustmentDelta(10_000m, first, 100m, 110m);
+        Assert.Equal(-1_000m, second);
+
+        var retry = SupplierPriceDebtAdjustmentService.CalculateAdjustmentDelta(10_000m, first + second, 100m, 110m);
+        Assert.Equal(0m, retry);
+    }
+
+    [Fact]
+    public void PriceDebtAdjustment_PreservesSupplierCreditWhenPriceFallsBelowPriorAllocations()
+    {
+        var outstanding = SupplierPriceDebtAdjustmentService.CalculateOutstandingBalance(
+            snapshotDebt: 10_000m,
+            adjustments: -2_000m,
+            previousAllocations: 9_000m,
+            currentAllocation: 0m);
+
+        Assert.Equal(-1_000m, outstanding);
+    }
 }

@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Indamin.Payment.Controllers;
 
 [Authorize]
-public class PaymentWizardController(AppDbContext db, ExcelService excel, PaymentCalculationService calc, PaymentOrderPdfService pdf, InputQueryService inputQueries) : Controller
+public class PaymentWizardController(AppDbContext db, ExcelService excel, PaymentCalculationService calc, PaymentOrderPdfService pdf, InputQueryService inputQueries, SupplierPriceDebtAdjustmentService debtAdjustments) : Controller
 {
     const string SessionKey = "PaymentWizardState";
     int UserId => int.TryParse(User.FindFirst("UserId")?.Value, out var id) ? id : 0;
@@ -701,17 +701,10 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
             if (s.CurrentClaimCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList)
             {
-                var priceIds = s.Rows.Where(x => x.PriceListItemId.HasValue).Select(x => x.PriceListItemId!.Value).Distinct().ToList();
-                var currentPrices = await db.SupplierPriceListItems.Where(x => priceIds.Contains(x.Id)).AsNoTracking().ToDictionaryAsync(x => x.Id);
                 foreach (var row in s.Rows)
-                {
-                    if (!row.PriceListItemId.HasValue || !currentPrices.TryGetValue(row.PriceListItemId.Value, out var livePrice))
-                        throw new InvalidOperationException($"فهرست بهای استفاده‌شده برای رسید «{row.ReceiptNo}» دیگر در سیستم موجود نیست؛ محاسبه را مجدداً انجام دهید.");
-                    if (Math.Abs(livePrice.PurchasePrice - row.AppliedUnitPrice) > .005m ||
-                        livePrice.ValidFrom.Date != row.AppliedPriceValidFrom?.Date ||
-                        livePrice.ValidTo.Date != row.AppliedPriceValidTo?.Date)
-                        throw new InvalidOperationException($"فهرست بهای استفاده‌شده برای رسید «{row.ReceiptNo}» پس از محاسبه تغییر کرده است؛ محاسبه را مجدداً انجام دهید.");
-                }
+                    await debtAdjustments.ValidateCurrentPriceSnapshotAsync(
+                        row.PartId, row.SupplierId, row.ReceiptDate, row.PriceListItemId,
+                        row.AppliedUnitPrice, row.ReceiptNo);
             }
 
             await SaveSystemParameterSnapshotsAsync(run.Id, s);
@@ -964,6 +957,14 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
             var user = await db.Users.FindAsync(UserId);
             var alreadyApplied = run.FinancialEffectsAppliedAt.HasValue;
+
+            if (run.RunType == PaymentRunType.Calculated)
+            {
+                foreach (var row in run.Invoices.Where(x => x.DebtCalculationMethod == CurrentClaimCalculationMethod.QuantityBasedPriceList))
+                    await debtAdjustments.ValidateCurrentPriceSnapshotAsync(
+                        row.PartId, row.SupplierId, row.ReceiptDate, row.PriceListItemId,
+                        row.AppliedUnitPrice, row.ReceiptNo);
+            }
 
             if (!alreadyApplied)
             {
