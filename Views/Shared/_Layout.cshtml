@@ -19,12 +19,13 @@
  @if(can("Payment.NonCalculated")){<a class="nav-item @Active("/NonCalculatedPayment")" href="/NonCalculatedPayment"><span class="nav-icon">⇢</span><span>پرداخت غیرمحاسباتی</span></a>}
  @if(can("Payment.History")){<a class="nav-item @Active("/PaymentWizard/History")" href="/PaymentWizard/History"><span class="nav-icon">▥</span><span>سوابق تخصیص‌های ثبت‌شده</span></a>}
 </details>}
-@if(can("Reports.View")||can("Reports.SupplierOverview")||can("Reports.AssessorPerformance")){
+@if(can("Reports.View")||can("Reports.SupplierOverview")||can("Reports.AssessorPerformance")||can("Reports.PriceListAnalysis")){
 <details class="sidebar-section sidebar-group" @(path.StartsWithSegments("/Reports")||path.StartsWithSegments("/SupplierOverview") ? "open" : null)>
  <summary class="sidebar-caption">گزارش‌ها و تحلیل <span class="sidebar-chevron">⌄</span></summary>
  @if(can("Reports.View")){<a class="nav-item @Active("/Reports")" href="/Reports"><span class="nav-icon">◫</span><span>داشبورد و گزارش‌های مالی</span></a>}
  @if(can("Reports.SupplierOverview")){<a class="nav-item @Active("/SupplierOverview")" href="/SupplierOverview"><span class="nav-icon">◉</span><span>مرور تامین‌کننده</span></a>}
  @if(can("Reports.AssessorPerformance")){<a class="nav-item @Active("/Reports/AssessorPerformance")" href="/Reports/AssessorPerformance"><span class="nav-icon">◷</span><span>عملکرد ارزیابان قطعه–تامین‌کننده</span></a>}
+ @if(can("Reports.PriceListAnalysis")){<a class="nav-item @Active("/Reports/PriceTrends")" href="/Reports/PriceTrends"><span class="nav-icon">↗</span><span>تحلیل فهرست بها و روند قیمت</span></a>}
 </details>}
 @if(can("Setup.Parts")||can("Setup.Suppliers")||can("Setup.Mappings")||can("Setup.Evaluations")||can("Setup.Lookups")||can("Setup.SupplierPriceList")){
 <details class="sidebar-section sidebar-group" @(path.StartsWithSegments("/Setup/Parts")||path.StartsWithSegments("/Setup/Suppliers")||path.StartsWithSegments("/Setup/Mappings")||path.StartsWithSegments("/Setup/Evaluations")||path.StartsWithSegments("/Setup/Lookups")||path.StartsWithSegments("/SupplierPriceList") ? "open" : null)>
