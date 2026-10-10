@@ -2,6 +2,8 @@
 @using Indamin.Payment.Services
 @{
     ViewData["Title"] = "تحلیل فهرست بها و روند قیمت";
+    var totalPages = Math.Max(1, (int)Math.Ceiling(Model.FilteredTrendCount / (double)Model.PageSize));
+    string PageUrl(int page) => Url.Action("PriceTrends", "Reports", new { q = Model.Search, changeType = Model.ChangeType, status = Model.Status, page, pageSize = Model.PageSize }) ?? "/Reports/PriceTrends";
 }
 <div class="page-header">
  <div>
@@ -28,10 +30,17 @@
 </div>
 
 <div class="form-panel mt-3">
- <div class="panel-title"><div><h4>روند تغییر نرخ به تفکیک کالا و تأمین‌کننده</h4><span>ردیف‌ها بر اساس قدر مطلق درصد تغییر مرتب شده‌اند؛ موارد بدون نرخ قبلی تغییر صفر دارند.</span></div><span class="mini-label">@Model.Trends.Count.ToString("N0") ارتباط</span></div>
+ <div class="panel-title"><div><h4>روند تغییر نرخ به تفکیک کالا و تأمین‌کننده</h4><span>جست‌وجو در کد/نام تأمین‌کننده و کد/عنوان کالا، همراه با فیلتر نوع تغییر و وضعیت نرخ.</span></div><span class="mini-label">@Model.FilteredTrendCount.ToString("N0") نتیجه</span></div>
+ <form method="get" action="/Reports/PriceTrends" class="row g-2 align-items-end mb-3">
+  <div class="col-xl-4 col-md-6"><label class="form-label">جست‌وجو</label><input class="form-control" name="q" value="@Model.Search" placeholder="کد یا نام تأمین‌کننده / کالا"></div>
+  <div class="col-xl-2 col-md-6"><label class="form-label">نوع تغییر قیمت</label><select class="form-select" name="changeType"><option value="">همه تغییرات</option><option value="increase" selected="@(Model.ChangeType == "increase")">افزایشی</option><option value="decrease" selected="@(Model.ChangeType == "decrease")">کاهشی</option><option value="unchanged" selected="@(Model.ChangeType == "unchanged")">بدون تغییر</option></select></div>
+  <div class="col-xl-2 col-md-6"><label class="form-label">وضعیت نرخ</label><select class="form-select" name="status"><option value="">همه وضعیت‌ها</option><option value="active" selected="@(Model.Status == "active")">معتبر امروز</option><option value="inactive" selected="@(Model.Status == "inactive")">غیرفعال</option><option value="expired" selected="@(Model.Status == "expired")">خارج از اعتبار</option></select></div>
+  <div class="col-xl-2 col-md-6"><label class="form-label">تعداد در صفحه</label><select class="form-select" name="pageSize"><option value="25" selected="@(Model.PageSize == 25)">۲۵ ردیف</option><option value="50" selected="@(Model.PageSize == 50)">۵۰ ردیف</option><option value="75" selected="@(Model.PageSize == 75)">۷۵ ردیف</option><option value="100" selected="@(Model.PageSize == 100)">۱۰۰ ردیف</option></select></div>
+  <div class="col-xl-2 col-md-6 d-flex gap-2"><button class="btn btn-main" type="submit">اعمال فیلتر</button><a class="btn btn-outline-secondary" href="/Reports/PriceTrends">پاک‌کردن</a></div>
+ </form>
  <div class="table-responsive">
-  <table class="table modern-table">
-   <thead><tr><th>تأمین‌کننده</th><th>کد کالا</th><th>عنوان کالا</th><th>نرخ قبلی</th><th>آخرین نرخ</th><th>تغییر مبلغ</th><th>تغییر درصد</th><th>شروع اعتبار آخرین نرخ</th><th>پایان اعتبار</th><th>وضعیت</th><th>تاریخچه</th></tr></thead>
+  <table class="table modern-table align-middle">
+   <thead><tr><th>تأمین‌کننده</th><th>کد کالا</th><th>عنوان کالا</th><th>نرخ قبلی</th><th>آخرین نرخ</th><th>تغییر مبلغ</th><th>تغییر درصد</th><th>شروع اعتبار آخرین نرخ</th><th>پایان اعتبار</th><th>وضعیت</th><th>تاریخچه نرخ</th></tr></thead>
    <tbody>
    @foreach (var x in Model.Trends)
    {
@@ -45,12 +54,20 @@
      <td>@PersianDateService.ToJalali(x.LatestValidFrom)</td>
      <td>@PersianDateService.ToJalali(x.LatestValidTo)</td>
      <td>@if (x.LatestActive && x.LatestValidFrom.Date <= DateTime.Today && x.LatestValidTo.Date >= DateTime.Today) { <span class="validation-chip validation-ok">معتبر امروز</span> } else if (!x.LatestActive) { <span class="mini-label">غیرفعال</span> } else { <span class="mini-label">خارج از اعتبار</span> }</td>
-     <td>@x.HistoryCount.ToString("N0") نرخ</td>
+     <td><button type="button" class="btn btn-sm btn-outline-primary price-history-open" data-supplier-part-id="@x.SupplierPartId" data-history-count="@x.HistoryCount">@x.HistoryCount.ToString("N0") نرخ</button></td>
     </tr>
    }
-   @if (Model.Trends.Count == 0) { <tr><td colspan="11" class="text-center text-muted py-4">هنوز رکوردی در فهرست بهای تأمین‌کنندگان ثبت نشده است.</td></tr> }
+   @if (Model.Trends.Count == 0) { <tr><td colspan="11" class="text-center text-muted py-4">با فیلترهای انتخاب‌شده موردی پیدا نشد.</td></tr> }
    </tbody>
   </table>
+ </div>
+ <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+  <small class="text-muted">صفحه @Model.Page از @totalPages — نمایش @Model.Trends.Count.ToString("N0") مورد از @Model.FilteredTrendCount.ToString("N0") نتیجه</small>
+  <nav aria-label="صفحه‌بندی روند قیمت"><ul class="pagination pagination-sm mb-0">
+   <li class="page-item @(Model.Page <= 1 ? "disabled" : "")"><a class="page-link" href="@(Model.Page <= 1 ? "#" : PageUrl(Model.Page - 1))">قبلی</a></li>
+   @for (var p = Math.Max(1, Model.Page - 2); p <= Math.Min(totalPages, Model.Page + 2); p++) { <li class="page-item @(p == Model.Page ? "active" : "")"><a class="page-link" href="@PageUrl(p)">@p</a></li> }
+   <li class="page-item @(Model.Page >= totalPages ? "disabled" : "")"><a class="page-link" href="@(Model.Page >= totalPages ? "#" : PageUrl(Model.Page + 1))">بعدی</a></li>
+  </ul></nav>
  </div>
 </div>
 
@@ -69,3 +86,82 @@
   </table>
  </div>
 </div>
+
+<div class="modal fade" id="priceHistoryModal" tabindex="-1" aria-labelledby="priceHistoryTitle" aria-hidden="true">
+ <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+  <div class="modal-content border-0 shadow-lg">
+   <div class="modal-header"><div><h5 class="modal-title" id="priceHistoryTitle">تاریخچه تغییرات نرخ</h5><div id="priceHistorySubtitle" class="text-muted small mt-1">در حال دریافت اطلاعات…</div></div><button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal" aria-label="بستن"></button></div>
+   <div class="modal-body">
+    <div id="priceHistoryLoading" class="text-center py-4">در حال بارگذاری تاریخچه نرخ…</div>
+    <div id="priceHistoryError" class="alert alert-danger d-none"></div>
+    <div id="priceHistoryContent" class="d-none">
+     <div class="table-responsive mb-4"><table class="table modern-table align-middle"><thead><tr><th>ردیف</th><th>قیمت خرید</th><th>شروع اعتبار</th><th>پایان اعتبار</th><th>آخرین ویرایش</th><th>وضعیت</th></tr></thead><tbody id="priceHistoryRows"></tbody></table></div>
+     <div class="form-panel"><div class="panel-title"><div><h5 class="mb-1">نمودار خطی روند قیمت</h5><span>قیمت هر رکورد بر اساس تاریخ شروع اعتبار</span></div></div><div style="height:320px;position:relative"><canvas id="priceHistoryChart" role="img" aria-label="نمودار خطی تغییرات نرخ در طول زمان"></canvas></div></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+@section Scripts {
+ <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+ <script>
+ (() => {
+   const modalElement = document.getElementById('priceHistoryModal');
+   if (!modalElement) return;
+   const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+   const loading = document.getElementById('priceHistoryLoading');
+   const error = document.getElementById('priceHistoryError');
+   const content = document.getElementById('priceHistoryContent');
+   const rowsElement = document.getElementById('priceHistoryRows');
+   const subtitle = document.getElementById('priceHistorySubtitle');
+   let chart = null;
+   const fmt = value => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 2 }).format(value);
+   const el = (tag, text, className) => { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; };
+
+   document.querySelectorAll('.price-history-open').forEach(button => button.addEventListener('click', async () => {
+     loading.classList.remove('d-none'); error.classList.add('d-none'); content.classList.add('d-none');
+     rowsElement.replaceChildren(); subtitle.textContent = 'در حال دریافت اطلاعات…';
+     if (chart) { chart.destroy(); chart = null; }
+     modal.show();
+     try {
+       const response = await fetch('/Reports/PriceHistory?supplierPartId=' + encodeURIComponent(button.dataset.supplierPartId), { headers: { 'Accept': 'application/json' } });
+       if (!response.ok) throw new Error(response.status === 404 ? 'ارتباط کالا و تأمین‌کننده پیدا نشد.' : 'دریافت تاریخچه نرخ ناموفق بود.');
+       const data = await response.json();
+       document.getElementById('priceHistoryTitle').textContent = 'تاریخچه تغییرات نرخ';
+       subtitle.textContent = data.supplierTitle + ' (' + data.supplierCode + ') — ' + data.partTitle + ' (' + data.partCode + ')';
+       data.history.forEach((item, index) => {
+         const tr = document.createElement('tr');
+         tr.append(el('td', fmt(index + 1)));
+         tr.append(el('td', fmt(item.purchasePrice), 'amount-emphasis'));
+         tr.append(el('td', item.validFrom));
+         tr.append(el('td', item.validTo));
+         tr.append(el('td', item.updatedAt));
+         tr.append(el('td', item.isActive ? 'فعال' : 'غیرفعال', item.isActive ? 'text-success' : 'text-muted'));
+         rowsElement.append(tr);
+       });
+       if (data.history.length === 0) {
+         const tr = document.createElement('tr'), td = el('td', 'برای این کالا و تأمین‌کننده تاریخچه‌ای ثبت نشده است.', 'text-center text-muted py-4');
+         td.colSpan = 6; tr.append(td); rowsElement.append(tr);
+       }
+       loading.classList.add('d-none'); content.classList.remove('d-none');
+       const labels = data.history.map(x => x.validFrom);
+       const prices = data.history.map(x => Number(x.purchasePrice));
+       if (window.Chart && prices.length) {
+         chart = new Chart(document.getElementById('priceHistoryChart'), {
+           type: 'line',
+           data: { labels, datasets: [{ label: 'قیمت خرید', data: prices, borderColor: '#2d7fb3', backgroundColor: 'rgba(45,127,179,.12)', pointRadius: 4, pointHoverRadius: 6, tension: .2, fill: true }] },
+           options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' }, plugins: { legend: { display: true, rtl: true }, tooltip: { callbacks: { label: context => 'قیمت: ' + fmt(context.parsed.y) } } }, scales: { x: { title: { display: true, text: 'شروع اعتبار' } }, y: { beginAtZero: false, ticks: { callback: value => fmt(value) }, title: { display: true, text: 'قیمت خرید' } } } }
+         });
+       } else if (!window.Chart) {
+         error.textContent = 'کتابخانه نمودار بارگذاری نشد؛ فهرست تاریخچه در دسترس است.';
+         error.classList.remove('d-none');
+       }
+     } catch (e) {
+       loading.classList.add('d-none'); error.textContent = e.message || 'خطا در دریافت تاریخچه نرخ.'; error.classList.remove('d-none');
+     }
+   }));
+   modalElement.addEventListener('hidden.bs.modal', () => { if (chart) { chart.destroy(); chart = null; } });
+ })();
+ </script>
+}
