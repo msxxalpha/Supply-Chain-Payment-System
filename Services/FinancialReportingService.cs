@@ -43,6 +43,83 @@ public class FinancialReportingService(AppDbContext db)
             trend, currentMethod, priceListPricedReceiptCount, warehouseSourceRunCount);
     }
 
+    public async Task<PriceListAnalysisData> GetPriceListAnalysisAsync()
+    {
+        var today = DateTime.Today;
+        var history = await db.SupplierPriceListItems.AsNoTracking()
+            .Include(x => x.SupplierPart).ThenInclude(x => x!.Supplier)
+            .Include(x => x.SupplierPart).ThenInclude(x => x!.Part)
+            .OrderBy(x => x.SupplierPartId)
+            .ThenBy(x => x.ValidFrom)
+            .ThenBy(x => x.Id)
+            .ToListAsync();
+
+        var trends = history
+            .Where(x => x.SupplierPart != null && x.SupplierPart.Supplier != null && x.SupplierPart.Part != null)
+            .GroupBy(x => x.SupplierPartId)
+            .Select(group =>
+            {
+                var ordered = group.OrderBy(x => x.ValidFrom).ThenBy(x => x.Id).ToList();
+                var latest = ordered[^1];
+                var previous = ordered.Count > 1 ? ordered[^2] : null;
+                var delta = previous == null ? 0m : latest.PurchasePrice - previous.PurchasePrice;
+                var percent = previous == null || previous.PurchasePrice == 0
+                    ? 0m
+                    : delta / previous.PurchasePrice * 100m;
+                return new PriceTrendRow(
+                    group.Key,
+                    latest.SupplierPart!.Supplier!.Code,
+                    latest.SupplierPart.Supplier.Title,
+                    latest.SupplierPart.Part!.Code,
+                    latest.SupplierPart.Part.Title,
+                    previous?.PurchasePrice,
+                    latest.PurchasePrice,
+                    delta,
+                    percent,
+                    previous?.ValidFrom,
+                    latest.ValidFrom,
+                    latest.ValidTo,
+                    latest.IsActive,
+                    ordered.Count,
+                    latest.UpdatedAt);
+            })
+            .OrderByDescending(x => Math.Abs(x.ChangePercent))
+            .ThenBy(x => x.SupplierTitle)
+            .ThenBy(x => x.PartCode)
+            .ToList();
+
+        var activeNow = history.Count(x => x.IsActive && x.ValidFrom.Date <= today && x.ValidTo.Date >= today);
+        var compared = trends.Where(x => x.PreviousPrice.HasValue).ToList();
+        var recent = history
+            .Where(x => x.SupplierPart != null && x.SupplierPart.Supplier != null && x.SupplierPart.Part != null)
+            .OrderByDescending(x => x.UpdatedAt)
+            .ThenByDescending(x => x.Id)
+            .Take(100)
+            .Select(x => new PriceListHistoryRow(
+                x.SupplierPart!.Supplier!.Code,
+                x.SupplierPart.Supplier.Title,
+                x.SupplierPart.Part!.Code,
+                x.SupplierPart.Part.Title,
+                x.PurchasePrice,
+                x.ValidFrom,
+                x.ValidTo,
+                x.IsActive,
+                x.UpdatedAt))
+            .ToList();
+
+        return new PriceListAnalysisData(
+            history.Count,
+            activeNow,
+            history.Select(x => x.SupplierPart?.SupplierId).Where(x => x.HasValue).Select(x => x!.Value).Distinct().Count(),
+            history.Select(x => x.SupplierPart?.PartId).Where(x => x.HasValue).Select(x => x!.Value).Distinct().Count(),
+            compared.Count(x => x.ChangeAmount > 0),
+            compared.Count(x => x.ChangeAmount < 0),
+            compared.Count(x => x.ChangeAmount == 0),
+            compared.Count > 0 ? compared.Average(x => x.ChangePercent) : 0m,
+            trends,
+            recent);
+    }
+
     public async Task<SupplierDashboardData?> GetSupplierAsync(int supplierId)
     {
         var context = await LoadContextAsync();
@@ -439,6 +516,46 @@ public class FinancialReportingService(AppDbContext db)
         List<PaymentRunInvoice> LatestInvoices,
         List<Supplier> Suppliers);
 }
+
+public record PriceListAnalysisData(
+    int TotalRecords,
+    int ActiveNowCount,
+    int SupplierCount,
+    int PartCount,
+    int IncreasedCount,
+    int DecreasedCount,
+    int UnchangedCount,
+    decimal AverageChangePercent,
+    List<PriceTrendRow> Trends,
+    List<PriceListHistoryRow> RecentHistory);
+
+public record PriceTrendRow(
+    int SupplierPartId,
+    string SupplierCode,
+    string SupplierTitle,
+    string PartCode,
+    string PartTitle,
+    decimal? PreviousPrice,
+    decimal LatestPrice,
+    decimal ChangeAmount,
+    decimal ChangePercent,
+    DateTime? PreviousValidFrom,
+    DateTime LatestValidFrom,
+    DateTime LatestValidTo,
+    bool LatestActive,
+    int HistoryCount,
+    DateTime UpdatedAt);
+
+public record PriceListHistoryRow(
+    string SupplierCode,
+    string SupplierTitle,
+    string PartCode,
+    string PartTitle,
+    decimal PurchasePrice,
+    DateTime ValidFrom,
+    DateTime ValidTo,
+    bool IsActive,
+    DateTime UpdatedAt);
 
 public record FinancialDashboardData(
     int RunCount, int PaymentOrderedRuns, int ApprovedRuns,
