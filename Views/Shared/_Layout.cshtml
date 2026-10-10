@@ -6,7 +6,7 @@
 @{
     var path = Context.Request.Path;
     var isAdmin = User.HasClaim("IsAdmin", "1") || User.IsInRole("SYS_ADMIN");
-    var can = (string code) => isAdmin || User.HasClaim("Permission", code);
+    Func<string, bool> can = code => isAdmin || User.HasClaim("Permission", code);
 }
 <details class="sidebar-section sidebar-group" @(path == "/" ? "open" : null)>
  <summary class="sidebar-caption">نمای کلی <span class="sidebar-chevron">⌄</span></summary>
