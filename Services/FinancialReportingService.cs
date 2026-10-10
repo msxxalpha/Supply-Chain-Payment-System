@@ -527,7 +527,13 @@ public record PriceListAnalysisData(
     int UnchangedCount,
     decimal AverageChangePercent,
     List<PriceTrendRow> Trends,
-    List<PriceListHistoryRow> RecentHistory);
+    List<PriceListHistoryRow> RecentHistory,
+    int FilteredTrendCount = 0,
+    int Page = 1,
+    int PageSize = 25,
+    string Search = "",
+    string ChangeType = "",
+    string Status = "");
 
 public record PriceTrendRow(
     int SupplierPartId,
