@@ -114,3 +114,13 @@ h1,h2,h3,h4,h5,h6{color:var(--navy);font-weight:900}h1{font-size:30px}h2{font-si
 
 /* Supplier price list money fields */
 .money-field{position:relative}.money-input{text-align:left;direction:ltr;font-variant-numeric:tabular-nums}.money-in-words{min-height:18px;margin-top:4px;color:#7f92a0;font-size:9px;line-height:1.8;text-align:right;direction:rtl}.money-in-words::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--blue);margin-left:5px;vertical-align:middle;opacity:.65}
+
+/* Sidebar accordion navigation */
+.app-sidebar{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(165,190,210,.32) transparent}
+.sidebar-group{padding-top:12px;flex:none}
+.sidebar-group>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 8px;margin-bottom:7px;user-select:none}
+.sidebar-group>summary::-webkit-details-marker{display:none}
+.sidebar-group>summary:hover{color:#dceaf4}
+.sidebar-chevron{font-size:15px;transition:transform .18s ease;line-height:1}
+.sidebar-group[open]>summary .sidebar-chevron{transform:rotate(180deg)}
+.sidebar-group .nav-item{margin-top:2px;margin-bottom:2px}
