@@ -19,7 +19,7 @@ public class PaymentCalculationService(AppDbContext db)
         ApplySystemSettingsToState(s, settings);
         s.CurrentClaimCalculationMethod = (CurrentClaimCalculationMethod)(int)Value(settings, "CURRENT_CLAIM_CALC_METHOD", 1);
 
-        var parameters = await db.PaymentParameters.Where(x => x.IsActive)
+        var parameters = await db.PaymentParameters.Where(x => x.IsActive && x.Weight > 0)
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Title).AsNoTracking().ToListAsync();
 
         var totalWeight = parameters.Sum(x => x.Weight);
