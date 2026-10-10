@@ -180,6 +180,23 @@ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name=N'IX_UserActivitySessions_Use
     db.RolePermissions.AddRange(missing);
     await db.SaveChangesAsync();
    }
+
+   // Reconcile this sensitive permission for existing databases as well as new installs.
+   // Evaluator accounts must never inherit access to financial dashboards by default.
+   if(def.Key=="SUPPLIER_PART_ASSESSOR")
+   {
+    var dashboardPermissionId=await db.Permissions.Where(x=>x.Code=="Dashboard.View").Select(x=>(int?)x.Id).FirstOrDefaultAsync();
+    if(dashboardPermissionId.HasValue)
+    {
+     var existingDashboardGrant=await db.RolePermissions
+       .SingleOrDefaultAsync(x=>x.RoleId==role.Id && x.PermissionId==dashboardPermissionId.Value);
+     if(existingDashboardGrant!=null)
+     {
+      db.RolePermissions.Remove(existingDashboardGrant);
+      await db.SaveChangesAsync();
+     }
+    }
+   }
   }
  }
  public static async Task SeedAsync(AppDbContext db){
