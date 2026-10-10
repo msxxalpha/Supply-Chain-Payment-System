@@ -2,7 +2,17 @@ using Indamin.Payment.Services;
 using System.Security.Claims;using Indamin.Payment.Data;using Microsoft.AspNetCore.Authorization;using Microsoft.AspNetCore.Authentication;using Microsoft.AspNetCore.Authentication.Cookies;using Microsoft.AspNetCore.Mvc;using Microsoft.EntityFrameworkCore;
 namespace Indamin.Payment.Controllers;
 public class AccountController(AppDbContext db,CompanySettingsService companySettings):Controller{
- [AllowAnonymous][HttpGet] public async Task<IActionResult> Login(string? returnUrl=null)=>User.Identity?.IsAuthenticated==true?Redirect(!string.IsNullOrWhiteSpace(returnUrl)&&Url.IsLocalUrl(returnUrl)?returnUrl:"/"):(IActionResult)View(new LoginVm{returnUrl=returnUrl,Company=await companySettings.GetAsync()});
+ string DefaultLandingUrl()
+ {
+  if(User.HasClaim("Permission","Dashboard.View")) return "/";
+  if(User.HasClaim("Permission","SupplierPartEvaluation.View")) return "/SupplierPartEvaluation";
+  if(User.HasClaim("Permission","Reports.View")) return "/Reports";
+  if(User.HasClaim("Permission","Payment.Calculate")) return "/PaymentWizard";
+  if(User.HasClaim("Permission","Setup.Parts")) return "/Setup/Parts";
+  if(User.HasClaim("Permission","Setup.SupplierPriceList")) return "/SupplierPriceList";
+  return "/Account/Denied";
+ }
+ [AllowAnonymous][HttpGet] public async Task<IActionResult> Login(string? returnUrl=null)=>User.Identity?.IsAuthenticated==true?Redirect(!string.IsNullOrWhiteSpace(returnUrl)&&Url.IsLocalUrl(returnUrl)?returnUrl:DefaultLandingUrl()):(IActionResult)View(new LoginVm{returnUrl=returnUrl,Company=await companySettings.GetAsync()});
  [AllowAnonymous][HttpPost][ValidateAntiForgeryToken] public async Task<IActionResult> Login(LoginVm m){if(string.IsNullOrWhiteSpace(m.UserName)||string.IsNullOrWhiteSpace(m.Password)){ModelState.AddModelError("","نام کاربری و رمز عبور الزامی است.");m.Company=await companySettings.GetAsync();return View(m);}var u=await db.Users.SingleOrDefaultAsync(x=>x.UserName==m.UserName.Trim()&&x.IsActive);if(u==null||!PasswordHasher.Verify(m.Password,u.PasswordHash)){ModelState.AddModelError("","نام کاربری یا رمز عبور نادرست است.");m.Company=await companySettings.GetAsync();return View(m);}var roleCodes=await db.UserRoles.Where(x=>x.UserId==u.Id&&x.Role!.IsActive).Select(x=>x.Role!.Code).Distinct().ToListAsync();var permissionCodes=await db.UserRoles.Where(x=>x.UserId==u.Id&&x.Role!.IsActive).Join(db.RolePermissions,ur=>ur.RoleId,rp=>rp.RoleId,(ur,rp)=>rp).Where(x=>x.Permission!.Code!="").Select(x=>x.Permission!.Code).Distinct().ToListAsync();if(u.IsAdmin)permissionCodes=SecurityPermissions.AllCodes.ToList();var claimList=new List<Claim>{new(ClaimTypes.Name,u.DisplayName),new("UserId",u.Id.ToString()),new("IsAdmin",u.IsAdmin?"1":"0")};claimList.AddRange(roleCodes.Select(x=>new Claim(ClaimTypes.Role,x)));claimList.AddRange(permissionCodes.Select(x=>new Claim(SecurityPermissions.Claim,x)));var claims=claimList.ToArray();
   await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,new ClaimsPrincipal(new ClaimsIdentity(claims,CookieAuthenticationDefaults.AuthenticationScheme)));
   if(roleCodes.Contains("SUPPLIER_PART_ASSESSOR",StringComparer.OrdinalIgnoreCase))
@@ -25,7 +35,7 @@ public class AccountController(AppDbContext db,CompanySettingsService companySet
       });
       await db.SaveChangesAsync();
   }
-  return Redirect(!string.IsNullOrWhiteSpace(m.returnUrl)&&Url.IsLocalUrl(m.returnUrl)?m.returnUrl:"/");}
+  return Redirect(!string.IsNullOrWhiteSpace(m.returnUrl)&&Url.IsLocalUrl(m.returnUrl)?m.returnUrl:DefaultLandingUrl());}
  [Authorize][HttpPost][ValidateAntiForgeryToken] public async Task<IActionResult> Logout(){
   var userIdValue=User.FindFirst("UserId")?.Value;
   if(int.TryParse(userIdValue,out var userId) && User.IsInRole("SUPPLIER_PART_ASSESSOR"))
