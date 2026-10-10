@@ -11,11 +11,11 @@
 </div>
 <div class="form-panel mb-3">
  <form method="get" action="/Reports/AssessorPerformance" class="row g-3 align-items-end">
-  <div class="col-md-4"><label class="form-label">از تاریخ (میلادی)</label><input class="form-control" type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")"></div>
-  <div class="col-md-4"><label class="form-label">تا تاریخ (میلادی)</label><input class="form-control" type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")"></div>
+  <div class="col-md-4"><label class="form-label">از تاریخ شمسی</label><div class="jalali-input"><input class="form-control" type="text" name="from" value="@(Model.From.HasValue ? PersianDateService.ToJalali(Model.From.Value) : "")" inputmode="numeric" data-jalali-date autocomplete="off" spellcheck="false" aria-label="از تاریخ شمسی"><button class="date-trigger" type="button" data-jalali-trigger aria-label="باز کردن تقویم تاریخ شروع" title="تقویم شمسی">▣</button></div></div>
+  <div class="col-md-4"><label class="form-label">تا تاریخ شمسی</label><div class="jalali-input"><input class="form-control" type="text" name="to" value="@(Model.To.HasValue ? PersianDateService.ToJalali(Model.To.Value) : "")" inputmode="numeric" data-jalali-date autocomplete="off" spellcheck="false" aria-label="تا تاریخ شمسی"><button class="date-trigger" type="button" data-jalali-trigger aria-label="باز کردن تقویم تاریخ پایان" title="تقویم شمسی">▣</button></div></div>
   <div class="col-md-4 d-flex gap-2"><button class="btn btn-main" type="submit">اعمال فیلتر</button><a class="btn btn-outline-secondary" href="/Reports/AssessorPerformance">پاک‌کردن</a></div>
  </form>
- <div class="form-hint mt-2">فیلتر تاریخ بر اساس زمان ورود به نشست برای حضور و زمان آخرین ثبت امتیاز برای فعالیت ارزیابی اعمال می‌شود. زمان‌ها به وقت محلی نمایش داده می‌شوند.</div>
+ <div class="form-hint mt-2">فیلتر تاریخ شمسی بر اساس زمان ورود به نشست برای حضور و زمان آخرین ثبت امتیاز برای فعالیت ارزیابی اعمال می‌شود. زمان‌ها به وقت محلی نمایش داده می‌شوند.</div>
 </div>
 <div class="payment-kpi-grid report-kpis">
  <div class="payment-kpi"><span>کل نشست‌های ثبت‌شده</span><strong>@Model.TotalSessions.ToString("N0")</strong><small>در بازه انتخابی</small></div>
