@@ -14,6 +14,7 @@
    @if(User.HasClaim("Permission","Payment.Calculate")){<a class="btn btn-main btn-lg" href="/PaymentWizard">محاسبه و تخصیص پرداخت</a>}
    @if(User.HasClaim("Permission","Payment.NonCalculated")){<a class="btn btn-light-outline btn-lg" href="/NonCalculatedPayment">پرداخت غیرمحاسباتی</a>}
    @if(User.HasClaim("Permission","Reports.View")){<a class="btn btn-light-outline btn-lg" href="/Reports">گزارش‌های مالی</a>}
+   @if(User.HasClaim("Permission","Reports.PriceListAnalysis")){<a class="btn btn-light-outline btn-lg" href="/Reports/PriceTrends">تحلیل فهرست بها و روند قیمت</a>}
   </div>
  </div>
  <div class="hero-visual"><div class="visual-ring ring-one"></div><div class="visual-ring ring-two"></div><div class="visual-core"><span class="core-bar h1"></span><span class="core-bar h2"></span><span class="core-bar h3"></span><span class="core-bar h4"></span></div></div>
