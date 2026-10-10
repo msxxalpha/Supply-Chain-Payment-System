@@ -197,7 +197,8 @@ document.addEventListener("DOMContentLoaded", function () {
         panelIcon.textContent = button.dataset.guideIcon || "ⓘ";
         panelTitle.textContent = button.dataset.guideTitle || "راهنمای امتیازدهی";
         panelMeta.textContent = "وزن: " + (button.dataset.guideWeight || "۰") + "٪  |  حداکثر امتیاز: " + (button.dataset.guideMax || "۵");
-        panelText.textContent = (button.dataset.guideText || "").trim() || "برای این پارامتر هنوز راهنمای امتیازدهی ثبت نشده است.";
+        const guideText = (button.dataset.guideText || "").trim().replace(/\s*\|\s*/g, "\n");
+        panelText.textContent = guideText || "برای این پارامتر هنوز راهنمای امتیازدهی ثبت نشده است.";
         panel.hidden = false;
         button.setAttribute("aria-expanded", "true");
         button.classList.add("is-selected");

@@ -115,7 +115,7 @@ document.addEventListener("DOMContentLoaded",()=>{document.querySelectorAll("[da
     function initFrozenTableHeaders() {
         if (!document.body.classList.contains("freeze-table-headers")) return;
 
-        const tables = Array.from(document.querySelectorAll(".table-responsive table, .table-scroll table"))
+        const tables = Array.from(document.querySelectorAll("table"))
             .filter(table => table.querySelector("thead") && !table.closest(".modal"));
         if (!tables.length) return;
 
