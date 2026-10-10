@@ -12,7 +12,26 @@ public class AccountController(AppDbContext db,CompanySettingsService companySet
   if(User.HasClaim("Permission","Setup.SupplierPriceList")) return "/SupplierPriceList";
   return "/Account/Denied";
  }
- [AllowAnonymous][HttpGet] public async Task<IActionResult> Login(string? returnUrl=null)=>User.Identity?.IsAuthenticated==true?Redirect(!string.IsNullOrWhiteSpace(returnUrl)&&Url.IsLocalUrl(returnUrl)?returnUrl:DefaultLandingUrl()):(IActionResult)View(new LoginVm{returnUrl=returnUrl,Company=await companySettings.GetAsync()});
+
+ // Authentication middleware can send "/" as returnUrl when an unauthorised user
+ // initially requests the dashboard. Do not send that user straight back to the
+ // protected dashboard after login; use their first permitted landing page instead.
+ string LoginRedirectUrl(string? returnUrl)
+ {
+  if (string.IsNullOrWhiteSpace(returnUrl) || !Url.IsLocalUrl(returnUrl))
+      return DefaultLandingUrl();
+
+  var path = returnUrl.Split('?', '#')[0].TrimEnd('/');
+  var isDashboardPath = path.Length == 0 ||
+      path.Equals("/Home", StringComparison.OrdinalIgnoreCase);
+
+  if (isDashboardPath && !User.HasClaim("Permission", "Dashboard.View"))
+      return DefaultLandingUrl();
+
+  return returnUrl;
+ }
+
+ [AllowAnonymous][HttpGet] public async Task<IActionResult> Login(string? returnUrl=null)=>User.Identity?.IsAuthenticated==true?Redirect(LoginRedirectUrl(returnUrl)):(IActionResult)View(new LoginVm{returnUrl=returnUrl,Company=await companySettings.GetAsync()});
  [AllowAnonymous][HttpPost][ValidateAntiForgeryToken] public async Task<IActionResult> Login(LoginVm m){if(string.IsNullOrWhiteSpace(m.UserName)||string.IsNullOrWhiteSpace(m.Password)){ModelState.AddModelError("","نام کاربری و رمز عبور الزامی است.");m.Company=await companySettings.GetAsync();return View(m);}var u=await db.Users.SingleOrDefaultAsync(x=>x.UserName==m.UserName.Trim()&&x.IsActive);if(u==null||!PasswordHasher.Verify(m.Password,u.PasswordHash)){ModelState.AddModelError("","نام کاربری یا رمز عبور نادرست است.");m.Company=await companySettings.GetAsync();return View(m);}var roleCodes=await db.UserRoles.Where(x=>x.UserId==u.Id&&x.Role!.IsActive).Select(x=>x.Role!.Code).Distinct().ToListAsync();var permissionCodes=await db.UserRoles.Where(x=>x.UserId==u.Id&&x.Role!.IsActive).Join(db.RolePermissions,ur=>ur.RoleId,rp=>rp.RoleId,(ur,rp)=>rp).Where(x=>x.Permission!.Code!="").Select(x=>x.Permission!.Code).Distinct().ToListAsync();if(u.IsAdmin)permissionCodes=SecurityPermissions.AllCodes.ToList();var claimList=new List<Claim>{new(ClaimTypes.Name,u.DisplayName),new("UserId",u.Id.ToString()),new("IsAdmin",u.IsAdmin?"1":"0")};claimList.AddRange(roleCodes.Select(x=>new Claim(ClaimTypes.Role,x)));claimList.AddRange(permissionCodes.Select(x=>new Claim(SecurityPermissions.Claim,x)));var claims=claimList.ToArray();
   await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,new ClaimsPrincipal(new ClaimsIdentity(claims,CookieAuthenticationDefaults.AuthenticationScheme)));
   if(roleCodes.Contains("SUPPLIER_PART_ASSESSOR",StringComparer.OrdinalIgnoreCase))
@@ -35,7 +54,7 @@ public class AccountController(AppDbContext db,CompanySettingsService companySet
       });
       await db.SaveChangesAsync();
   }
-  return Redirect(!string.IsNullOrWhiteSpace(m.returnUrl)&&Url.IsLocalUrl(m.returnUrl)?m.returnUrl:DefaultLandingUrl());}
+  return Redirect(LoginRedirectUrl(m.returnUrl));}
  [Authorize][HttpPost][ValidateAntiForgeryToken] public async Task<IActionResult> Logout(){
   var userIdValue=User.FindFirst("UserId")?.Value;
   if(int.TryParse(userIdValue,out var userId) && User.IsInRole("SUPPLIER_PART_ASSESSOR"))
