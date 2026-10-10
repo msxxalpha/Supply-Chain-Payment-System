@@ -17,10 +17,94 @@ public class ReportsController(FinancialReportingService reports, AppDbContext d
     }
 
     [Authorize(Policy = SecurityPermissions.PriceListAnalysis)]
-    public async Task<IActionResult> PriceTrends()
+    public async Task<IActionResult> PriceTrends(string? q, string? changeType, string? status, int page = 1, int pageSize = 25)
     {
+        pageSize = pageSize is 50 or 75 or 100 ? pageSize : 25;
+        page = Math.Max(1, page);
+        q = (q ?? "").Trim();
+        changeType = (changeType ?? "").Trim().ToLowerInvariant();
+        status = (status ?? "").Trim().ToLowerInvariant();
+
         var data = await reports.GetPriceListAnalysisAsync();
-        return View(data);
+        var filtered = data.Trends.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(q))
+            filtered = filtered.Where(x =>
+                x.SupplierCode.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                x.SupplierTitle.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                x.PartCode.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                x.PartTitle.Contains(q, StringComparison.OrdinalIgnoreCase));
+        filtered = changeType switch
+        {
+            "increase" => filtered.Where(x => x.ChangeAmount > 0),
+            "decrease" => filtered.Where(x => x.ChangeAmount < 0),
+            "unchanged" => filtered.Where(x => x.ChangeAmount == 0),
+            _ => filtered
+        };
+        var today = DateTime.Today;
+        filtered = status switch
+        {
+            "active" => filtered.Where(x => x.LatestActive && x.LatestValidFrom.Date <= today && x.LatestValidTo.Date >= today),
+            "inactive" => filtered.Where(x => !x.LatestActive),
+            "expired" => filtered.Where(x => x.LatestActive && (x.LatestValidFrom.Date > today || x.LatestValidTo.Date < today)),
+            _ => filtered
+        };
+
+        var allFiltered = filtered.ToList();
+        var totalPages = Math.Max(1, (int)Math.Ceiling(allFiltered.Count / (double)pageSize));
+        page = Math.Min(page, totalPages);
+        var paged = allFiltered.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        return View(data with
+        {
+            Trends = paged,
+            FilteredTrendCount = allFiltered.Count,
+            Page = page,
+            PageSize = pageSize,
+            Search = q,
+            ChangeType = changeType,
+            Status = status
+        });
+    }
+
+    [Authorize(Policy = SecurityPermissions.PriceListAnalysis)]
+    [HttpGet]
+    public async Task<IActionResult> PriceHistory(int supplierPartId)
+    {
+        if (supplierPartId <= 0) return BadRequest();
+        var mapping = await db.SupplierParts.AsNoTracking()
+            .Include(x => x.Supplier).Include(x => x.Part)
+            .SingleOrDefaultAsync(x => x.Id == supplierPartId);
+        if (mapping?.Supplier == null || mapping.Part == null) return NotFound();
+
+        var rows = await db.SupplierPriceListItems.AsNoTracking()
+            .Where(x => x.SupplierPartId == supplierPartId)
+            .OrderBy(x => x.ValidFrom).ThenBy(x => x.Id)
+            .Select(x => new
+            {
+                x.Id,
+                x.PurchasePrice,
+                ValidFrom = x.ValidFrom,
+                ValidTo = x.ValidTo,
+                x.IsActive,
+                x.UpdatedAt
+            }).ToListAsync();
+
+        return Json(new
+        {
+            supplierTitle = mapping.Supplier.Title,
+            supplierCode = mapping.Supplier.Code,
+            partTitle = mapping.Part.Title,
+            partCode = mapping.Part.Code,
+            history = rows.Select(x => new
+            {
+                x.Id,
+                x.PurchasePrice,
+                validFrom = PersianDateService.ToJalali(x.ValidFrom),
+                validTo = PersianDateService.ToJalali(x.ValidTo),
+                validFromIso = x.ValidFrom.ToString("yyyy-MM-dd"),
+                x.IsActive,
+                updatedAt = PersianDateService.ToJalali(x.UpdatedAt.ToLocalTime())
+            })
+        });
     }
 
     [Authorize(Policy = SecurityPermissions.AssessorPerformance)]
