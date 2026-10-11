@@ -10,6 +10,8 @@ GO
 IF COL_LENGTH(N'dbo.Suppliers',N'InitialClaimAmount') IS NULL
     ALTER TABLE dbo.Suppliers ADD InitialClaimAmount decimal(20,2) NOT NULL
         CONSTRAINT DF_Suppliers_InitialClaimAmount DEFAULT(0);
+IF COL_LENGTH(N'dbo.Suppliers',N'IsNonParticipating') IS NULL
+    ALTER TABLE dbo.Suppliers ADD IsNonParticipating bit NOT NULL CONSTRAINT DF_Suppliers_IsNonParticipating DEFAULT(0) WITH VALUES;
 GO
 
 /* Payment parameter snapshots and invoice/supplier-evaluation extensions */
