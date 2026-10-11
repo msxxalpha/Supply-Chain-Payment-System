@@ -95,7 +95,9 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
         try
         {
-            var rows = excel.ReadPaymentInvoices(file.OpenReadStream(), PersianDateService.Parse, out var errors);
+            var excludedSupplierNames = await db.Suppliers.AsNoTracking().Where(x => x.IsNonParticipating).Select(x => x.Title).ToListAsync();
+            var excludedSupplierKeys = excludedSupplierNames.Select(Normalize).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var rows = excel.ReadPaymentInvoices(file.OpenReadStream(), PersianDateService.Parse, name => excludedSupplierKeys.Contains(Normalize(name)), out var errors);
             return await ProcessImportedRowsAsync(s, rows, errors, Path.GetFileName(file.FileName), PaymentReceiptSource.Excel);
         }
         catch (Exception ex)
@@ -169,6 +171,9 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
         s.IgnoredImportRowNumbers = [];
         s.ReceiptSource = source;
         s.SourceFileName = sourceName;
+        var excludedSupplierNames = await db.Suppliers.AsNoTracking().Where(x => x.IsNonParticipating).Select(x => x.Title).ToListAsync();
+        var excludedSupplierKeys = excludedSupplierNames.Select(Normalize).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        imported = imported.Where(x => !excludedSupplierKeys.Contains(Normalize(x.SupplierTitle))).ToList();
         s.ImportedReceipts = imported.ToList();
         s.MissingParts = [];
         s.MissingSuppliers = [];
@@ -180,7 +185,7 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
             errors.Add($"{outside.Count} رکورد خارج از بازه زمانی تعیین‌شده است؛ {SourceRows(outside.Select(x => x.RowNumber), source)}.");
 
         var parts = await db.Parts.Where(x => x.IsActive).AsNoTracking().Select(x => new { x.Id, x.Title }).ToListAsync();
-        var suppliers = await db.Suppliers.Where(x => x.IsActive).AsNoTracking().Select(x => new { x.Id, x.Title }).ToListAsync();
+        var suppliers = await db.Suppliers.Where(x => x.IsActive || x.IsNonParticipating).AsNoTracking().Select(x => new { x.Id, x.Title, x.IsNonParticipating }).ToListAsync();
         var partByName = parts.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
         var supplierByName = suppliers.GroupBy(x => Normalize(x.Title)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
 

@@ -72,6 +72,7 @@ public class InputQueryService(AppDbContext db, ReportCredentialProtector creden
                 return new(false, [], errors, "");
 
             var rows = new List<ImportedPaymentInvoice>();
+            var excludedSupplierKeys = (await db.Suppliers.AsNoTracking().Where(x => x.IsNonParticipating).Select(x => x.Title).ToListAsync()).Select(NormalizeHeader).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var rowNumber = 1;
             while (await reader.ReadAsync())
             {
@@ -87,6 +88,7 @@ public class InputQueryService(AppDbContext db, ReportCredentialProtector creden
                     var warehouse = ReadString(reader, ordinals[NormalizeHeader("انبار")]);
                     var part = ReadString(reader, ordinals[NormalizeHeader("نام کالا")]);
                     var supplier = ReadString(reader, ordinals[NormalizeHeader("نام تامین کننده")]);
+                    if (!string.IsNullOrWhiteSpace(supplier) && excludedSupplierKeys.Contains(NormalizeHeader(supplier))) { rowNumber++; continue; }
                     var quantity = ReadDecimal(reader, ordinals[NormalizeHeader("مقدار رسید")], "مقدار رسید");
                     var receiptDate = ReadDate(reader, ordinals[NormalizeHeader("تاریخ رسید")], "تاریخ رسید");
 

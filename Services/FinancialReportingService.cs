@@ -275,7 +275,7 @@ public class FinancialReportingService(AppDbContext db)
         }
 
         var suppliers = await db.Suppliers.AsNoTracking()
-            .Where(x => x.IsActive)
+            .Where(x => x.IsActive && !x.IsNonParticipating)
             .OrderBy(x => x.Title)
             .ToListAsync();
 

@@ -27,8 +27,8 @@ public class PaymentCalculationService(AppDbContext db)
             throw new InvalidOperationException($"جمع وزن پارامترهای فعال باید دقیقاً 100٪ باشد؛ مقدار فعلی {totalWeight:0.####}٪ است.");
 
         var parts = await db.Parts.Where(x => x.IsActive).AsNoTracking().ToListAsync();
-        var suppliers = await db.Suppliers.Where(x => x.IsActive).AsNoTracking().ToListAsync();
-        var mappings = await db.SupplierParts.Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
+        var suppliers = await db.Suppliers.Where(x => x.IsActive || x.IsNonParticipating).AsNoTracking().ToListAsync();
+        var mappings = await db.SupplierParts.Where(x => x.IsActive && x.Supplier!.IsActive && !x.Supplier.IsNonParticipating && x.Part!.IsActive)
             .AsNoTracking().ToListAsync();
         var evaluations = await db.SupplierPartEvaluations.AsNoTracking().ToListAsync();
         var pricesByMapping = new Dictionary<int, List<SupplierPriceListItem>>();
@@ -51,16 +51,19 @@ public class PaymentCalculationService(AppDbContext db)
         var anyEvaluation = evaluations
             .GroupBy(x => (x.SupplierPartId, x.PaymentParameterId)).ToDictionary(g => g.Key, g => g.First());
 
+        var excludedSupplierKeys = suppliers.Where(x => x.IsNonParticipating).Select(x => Normalize(x.Title)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        imported = imported.Where(x => !excludedSupplierKeys.Contains(Normalize(x.SupplierTitle))).ToList();
         var previousCurrent = await PreviousCurrentAsync();
         var aggregated = Aggregate(imported).ToList();
         var rows = new List<PaymentCalculationRow>();
 
         foreach (var x in aggregated)
         {
+            if (!supplierByName.TryGetValue(Normalize(x.SupplierTitle), out var supplier) || !supplier.IsActive)
+                throw new InvalidOperationException($"تامین‌کننده «{x.SupplierTitle}» در اطلاعات پایه وجود ندارد یا فعال نیست.");
+            if (supplier.IsNonParticipating) continue;
             if (!partByName.TryGetValue(Normalize(x.PartTitle), out var part))
                 throw new InvalidOperationException($"کالا «{x.PartTitle}» در اطلاعات پایه وجود ندارد.");
-            if (!supplierByName.TryGetValue(Normalize(x.SupplierTitle), out var supplier))
-                throw new InvalidOperationException($"تامین‌کننده «{x.SupplierTitle}» در اطلاعات پایه وجود ندارد.");
             if (!mappingByPair.TryGetValue((part.Id, supplier.Id), out var mapping))
                 throw new InvalidOperationException($"ارتباط فعال قطعه «{part.Title}» و تامین‌کننده «{supplier.Title}» تعریف نشده است.");
 

@@ -17,7 +17,7 @@ public class SupplierPartEvaluationController(AppDbContext db) : Controller
         var mappings = await db.SupplierParts.AsNoTracking()
             .Include(x => x.Supplier)
             .Include(x => x.Part)
-            .Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
+            .Where(x => x.IsActive && x.Supplier!.IsActive && !x.Supplier.IsNonParticipating && x.Part!.IsActive)
             .OrderByDescending(x => x.Id)
             .ToListAsync();
 
@@ -159,7 +159,7 @@ public class SupplierPartEvaluationController(AppDbContext db) : Controller
         var mapping = await db.SupplierParts
             .Include(x => x.Supplier)
             .Include(x => x.Part)
-            .SingleOrDefaultAsync(x => x.Id == supplierPartId && x.IsActive);
+            .SingleOrDefaultAsync(x => x.Id == supplierPartId && x.IsActive && x.Supplier!.IsActive && !x.Supplier.IsNonParticipating && x.Part!.IsActive);
 
         if (mapping == null)
             return NotFound();

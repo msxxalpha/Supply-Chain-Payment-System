@@ -206,6 +206,8 @@ public class NonCalculatedPaymentController(AppDbContext db, SupplierPrioritySer
 
             var runDate = PersianDateService.Parse(s.PaymentDateJalali);
             var now = DateTime.UtcNow;
+            var excludedSelected = await db.Suppliers.AsNoTracking().AnyAsync(x => s.Suppliers.Select(y => y.SupplierId).Contains(x.Id) && x.IsNonParticipating);
+            if (excludedSelected) throw new InvalidOperationException("یک تامین‌کننده انتخاب‌شده از مشارکت در سامانه خارج شده است؛ مرحله اول را مجدداً انجام دهید.");
             var user = await db.Users.FindAsync(UserId);
             var totalRequested = Math.Round(s.Suppliers.Sum(x => x.Amount), 2);
             var totalCapacity = Math.Round(
