@@ -199,7 +199,8 @@ public class PaymentCalculationService(AppDbContext db)
         s.ImportedReceipts = imported.ToList();
         s.ImportedDebt = rows.Sum(x => x.OriginalDebt);
         s.RemainingDebt = rows.Sum(x => x.RemainingDebt);
-        AllocateCalculatedBudget(s.TotalAllocationBudget, rows, s.CalculatedInitialSharePercent, s.CalculatedCurrentSharePercent, s.MinimumEffectiveDebtAge, s.MinimumAllocationAmount, s.AllocationRounding);
+        if (rows.Count > 0)
+            AllocateCalculatedBudget(s.TotalAllocationBudget, rows, s.CalculatedInitialSharePercent, s.CalculatedCurrentSharePercent, s.MinimumEffectiveDebtAge, s.MinimumAllocationAmount, s.AllocationRounding);
         s.Step = 2;
         return s;
     }

@@ -642,6 +642,12 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
     {
         var s = Load();
         if (s == null) return RedirectToAction(nameof(Step1));
+        var selectedSupplierIds = s.Rows.Where(x => x.SupplierId.HasValue).Select(x => x.SupplierId!.Value).Distinct().ToList();
+        if (await db.Suppliers.AsNoTracking().AnyAsync(x => selectedSupplierIds.Contains(x.Id) && x.IsNonParticipating))
+        {
+            TempData["Error"] = "حداقل یکی از تامین‌کنندگان این محاسبه از مشارکت خارج شده است؛ محاسبه را دوباره اجرا کنید تا مبلغی برای او تخصیص نیابد.";
+            return RedirectToAction(nameof(Step2));
+        }
 
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         try
