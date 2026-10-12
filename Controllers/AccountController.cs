@@ -95,12 +95,16 @@ public class AccountController(AppDbContext db,CompanySettingsService companySet
           .Where(x=>x.UserId==userId&&x.LogoutAtUtc==null)
           .OrderByDescending(x=>x.LoginAtUtc)
           .FirstOrDefaultAsync();
-      if(session!=null)
+      if(session==null)
+      {
+          db.UserActivitySessions.Add(new UserActivitySession{UserId=userId,RoleCode="EVALUATOR_ACTIVITY",LoginAtUtc=now,LastSeenAtUtc=now,DurationSeconds=0});
+      }
+      else
       {
           session.LastSeenAtUtc=now;
           session.DurationSeconds=Math.Max(0,(int)Math.Min(int.MaxValue,(now-session.LoginAtUtc).TotalSeconds));
-          await db.SaveChangesAsync();
       }
+      await db.SaveChangesAsync();
   }
   catch
   {
