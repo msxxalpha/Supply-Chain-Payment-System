@@ -117,7 +117,7 @@ public class SupplierPartEvaluationController(AppDbContext db) : Controller
         var query = db.SupplierParts
             .Include(x => x.Supplier)
             .Include(x => x.Part)
-            .Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
+            .Where(x => x.IsActive && x.Supplier!.IsActive && !x.Supplier.IsNonParticipating && x.Part!.IsActive)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(q))

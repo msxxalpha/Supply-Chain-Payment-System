@@ -207,7 +207,15 @@ public class PaymentCalculationService(AppDbContext db)
 
     public async Task RecalculateCurrentDebtsAsync(PaymentWizardState s)
     {
-        if (s.Rows.Count == 0) return;
+        var excludedSuppliers = await db.Suppliers.AsNoTracking().Where(x => x.IsNonParticipating).Select(x => new { x.Id, x.Title }).ToListAsync();
+        if (excludedSuppliers.Count > 0)
+        {
+            var excludedIds = excludedSuppliers.Select(x => x.Id).ToHashSet();
+            var excludedNames = excludedSuppliers.Select(x => Normalize(x.Title)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            s.Rows.RemoveAll(x => (x.SupplierId.HasValue && excludedIds.Contains(x.SupplierId.Value)) || excludedNames.Contains(Normalize(x.SupplierTitle)));
+            s.ImportedReceipts = (s.ImportedReceipts ?? []).Where(x => !excludedNames.Contains(Normalize(x.SupplierTitle))).ToList();
+        }
+        if (s.Rows.Count == 0) { s.ImportedDebt = 0; s.RemainingDebt = 0; return; }
 
         var imported = Aggregate(s.ImportedReceipts ?? []).ToDictionary(
             x => KeyHash(x.ReceiptNo, x.Warehouse, x.PartTitle, x.SupplierTitle),
@@ -217,7 +225,7 @@ public class PaymentCalculationService(AppDbContext db)
 
         var previous = await PreviousCurrentAsync();
         var mappingByPair = await db.SupplierParts.AsNoTracking()
-            .Where(x => x.IsActive && x.Supplier!.IsActive && x.Part!.IsActive)
+            .Where(x => x.IsActive && x.Supplier!.IsActive && !x.Supplier.IsNonParticipating && x.Part!.IsActive)
             .Select(x => new { x.Id, x.PartId, x.SupplierId })
             .ToListAsync();
         var mappingIdsByPair = mappingByPair.ToDictionary(x => (x.PartId, x.SupplierId), x => x.Id);
@@ -329,7 +337,8 @@ public class PaymentCalculationService(AppDbContext db)
                 : null;
         }
 
-        AllocateCalculatedBudget(s.TotalAllocationBudget, s.Rows, s.CalculatedInitialSharePercent, s.CalculatedCurrentSharePercent, s.MinimumEffectiveDebtAge, s.MinimumAllocationAmount, s.AllocationRounding);
+        if (s.Rows.Count > 0)
+            AllocateCalculatedBudget(s.TotalAllocationBudget, s.Rows, s.CalculatedInitialSharePercent, s.CalculatedCurrentSharePercent, s.MinimumEffectiveDebtAge, s.MinimumAllocationAmount, s.AllocationRounding);
         return Task.CompletedTask;
     }
 

@@ -63,10 +63,24 @@ public class PaymentWizardController(AppDbContext db, ExcelService excel, Paymen
 
     [Authorize(Policy = SecurityPermissions.PaymentCalculate)]
     [HttpGet]
-    public IActionResult Step2()
+    public async Task<IActionResult> Step2()
     {
         var s = Load();
         if (s == null) return RedirectToAction(nameof(Step1));
+        var excluded = await db.Suppliers.AsNoTracking().Where(x => x.IsNonParticipating).Select(x => new { x.Id, x.Title }).ToListAsync();
+        var excludedIds = excluded.Select(x => x.Id).ToHashSet();
+        var excludedNames = excluded.Select(x => Normalize(x.Title)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (s.Rows.Any(x => (x.SupplierId.HasValue && excludedIds.Contains(x.SupplierId.Value)) || excludedNames.Contains(Normalize(x.SupplierTitle))))
+        {
+            await calc.RecalculateCurrentDebtsAsync(s);
+            Save(s);
+            if (s.Rows.Count == 0)
+            {
+                TempData["Error"] = "همه تامین‌کنندگان این محاسبه از مشارکت خارج شده‌اند؛ هیچ مبلغی برای آن‌ها تخصیص داده نمی‌شود. محاسبه جدیدی با تامین‌کنندگان مجاز ایجاد کنید.";
+                return RedirectToAction(nameof(Step1));
+            }
+            TempData["Result"] = "تامین‌کنندگان غیرمشارکت‌کننده از محاسبه جاری حذف و تخصیص بین تامین‌کنندگان مجاز بازبینی شد.";
+        }
         return View(s);
     }
 
