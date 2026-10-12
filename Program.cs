@@ -88,7 +88,32 @@ b.Services.AddControllersWithViews();b.Services.AddDataProtection();b.Services.A
     };
 });b.Services.AddAuthorization(o=>{o.AddPolicy("AdminOnly",p=>p.RequireClaim("IsAdmin","1"));foreach(var d in SecurityPermissions.Definitions)o.AddPolicy("Permission:"+d.Code,p=>p.RequireClaim(SecurityPermissions.Claim,d.Code));});
 var app=b.Build();using(var sc=app.Services.CreateScope()){var db=sc.ServiceProvider.GetRequiredService<AppDbContext>();await DatabaseInitializer.InitializeAsync(db);await DatabaseInitializer.EnsureSupplierInitialClaimAsync(db);await DatabaseInitializer.EnsureSupplierNonParticipationSchemaAsync(db);await DatabaseInitializer.EnsurePaymentSnapshotSchemaAsync(db);await DatabaseInitializer.EnsurePaymentLifecycleSchemaAsync(db);await DatabaseInitializer.EnsureAdvancedPaymentSchemaAsync(db);await DatabaseInitializer.EnsureSecuritySchemaAsync(db);await DatabaseInitializer.EnsureRoleEvaluatorLoggingSchemaAsync(db);await DatabaseInitializer.EnsureCompanySettingsAsync(db);await DatabaseInitializer.EnsureQueryAndPriceListSchemaAsync(db);await DatabaseInitializer.EnsurePriceDebtAdjustmentSchemaAsync(db);await DatabaseInitializer.EnsureSupplierPartAssessmentSchemaAsync(db);await DatabaseInitializer.SeedAsync(db);await DatabaseInitializer.SeedSecurityAsync(db);await DatabaseInitializer.SeedSystemParametersAsync(db);var pwd=app.Configuration["InitialAdminPassword"];if(string.IsNullOrWhiteSpace(pwd))throw new InvalidOperationException("InitialAdminPassword باید تنظیم شود.");if(!await db.Users.AnyAsync(x=>x.IsAdmin)){db.Users.Add(new AppUser{UserName="admin",DisplayName="مدیر سامانه پرداخت",IsAdmin=true,IsActive=true,PasswordHash=PasswordHasher.Hash(pwd)});await db.SaveChangesAsync();}await DatabaseInitializer.EnsureAdministratorRoleAssignmentAsync(db);await DatabaseInitializer.EnsureEvaluatorDefaultScoresAsync(db);}
-if(!app.Environment.IsDevelopment())app.UseExceptionHandler("/Home/Error");app.UseStaticFiles();app.UseRouting();app.UseSession();app.UseAuthentication();app.UseAuthorization();
+if(!app.Environment.IsDevelopment())app.UseExceptionHandler("/Home/Error");app.UseStaticFiles();app.UseRouting();app.UseSession();app.UseAuthentication();
+app.Use(async (context,next)=>{
+    var path=context.Request.Path;
+    var maintenancePage=path.Equals("/Home/Maintenance",StringComparison.OrdinalIgnoreCase);
+    var managerLogin=path.Equals("/Account/Login",StringComparison.OrdinalIgnoreCase)&&context.Request.Query["admin"]=="1";
+    if(!maintenancePage&&!managerLogin)
+    {
+        try
+        {
+            var db=context.RequestServices.GetRequiredService<AppDbContext>();
+            var maintenanceEnabled=await db.CompanySettings.AsNoTracking().Where(x=>x.Id==1).Select(x=>x.MaintenanceMode).SingleOrDefaultAsync();
+            var isSystemAdmin=context.User.Identity?.IsAuthenticated==true&&(context.User.HasClaim("IsAdmin","1")||context.User.IsInRole("SYS_ADMIN"));
+            if(maintenanceEnabled&&!isSystemAdmin)
+            {
+                context.Response.Redirect("/Home/Maintenance");
+                return;
+            }
+        }
+        catch
+        {
+            // Maintenance gate must not hide the application behind a middleware exception.
+        }
+    }
+    await next();
+});
+app.UseAuthorization();
 app.Use(async (context,next)=>{
     await next();
     if(context.User.Identity?.IsAuthenticated==true)

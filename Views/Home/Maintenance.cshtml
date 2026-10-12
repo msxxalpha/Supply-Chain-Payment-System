@@ -1,0 +1,98 @@
+@model Indamin.Payment.Data.CompanySettings
+@{
+    ViewData["Title"] = "تعمیر و نگهداری سامانه";
+    Layout = null;
+    var message = string.IsNullOrWhiteSpace(Model.MaintenanceMessage)
+        ? "سامانه در حال انجام عملیات نگهداری و به‌روزرسانی است. پس از پایان عملیات، دسترسی مجدداً برقرار خواهد شد."
+        : Model.MaintenanceMessage;
+}
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="90" />
+    <title>تعمیر و نگهداری | @Model.SystemName</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/font-face.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <style>
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; }
+        body { margin:0; min-height:100vh; font-family:Vazir,Tahoma,sans-serif; color:#eef5ff; background:#071426; }
+        .maintenance-shell { min-height:100vh; position:relative; overflow:hidden; display:flex; flex-direction:column; padding:30px clamp(18px,5vw,72px) 22px; isolation:isolate; }
+        .maintenance-shell:before,.maintenance-shell:after { content:""; position:absolute; z-index:-1; border-radius:50%; filter:blur(2px); pointer-events:none; }
+        .maintenance-shell:before { width:540px; height:540px; top:-260px; right:-100px; background:radial-gradient(circle,rgba(45,127,179,.34),rgba(45,127,179,0) 70%); }
+        .maintenance-shell:after { width:620px; height:620px; bottom:-360px; left:-140px; background:radial-gradient(circle,rgba(31,190,170,.17),rgba(31,190,170,0) 70%); }
+        .maintenance-grid { position:absolute; inset:0; z-index:-1; opacity:.13; background-image:linear-gradient(rgba(184,211,239,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(184,211,239,.12) 1px,transparent 1px); background-size:42px 42px; mask-image:linear-gradient(to bottom,black,transparent 85%); }
+        .maintenance-header { width:min(1080px,100%); margin:0 auto; display:flex; justify-content:space-between; align-items:center; gap:20px; }
+        .maintenance-brand { display:flex; align-items:center; gap:13px; }
+        .maintenance-brand-mark { width:48px;height:48px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(145deg,#2d7fb3,#1ac0ad);box-shadow:0 10px 30px rgba(22,163,183,.25); }
+        .maintenance-brand-mark svg { width:27px;height:27px; }
+        .maintenance-brand strong { display:block;font-size:15px;letter-spacing:-.2px; }
+        .maintenance-brand small { display:block;color:#93a9c3;font-size:12px;margin-top:4px; }
+        .maintenance-state { border:1px solid rgba(255,190,92,.27); border-radius:999px; background:rgba(255,190,92,.08); padding:9px 14px; color:#ffd18a; font-size:12px; display:flex; align-items:center; gap:9px; white-space:nowrap; }
+        .maintenance-state i { width:7px;height:7px;border-radius:50%;background:#ffbf69;box-shadow:0 0 0 5px rgba(255,191,105,.12); }
+        .maintenance-main { width:min(900px,100%); margin:auto; display:grid; place-items:center; padding:64px 0 54px; }
+        .maintenance-card { width:min(690px,100%); text-align:center; border:1px solid rgba(184,211,239,.14); border-radius:30px; background:linear-gradient(145deg,rgba(19,40,65,.88),rgba(10,26,45,.92)); box-shadow:0 28px 90px rgba(0,0,0,.28),inset 0 1px rgba(255,255,255,.04); padding:clamp(27px,5vw,54px); position:relative; }
+        .maintenance-art { width:158px;height:158px;margin:0 auto 28px;position:relative;display:grid;place-items:center; }
+        .maintenance-orbit { position:absolute;inset:9px;border:1px solid rgba(75,204,205,.28);border-radius:50%;animation:orbit 24s linear infinite; }
+        .maintenance-orbit:before,.maintenance-orbit:after { content:"";position:absolute;width:9px;height:9px;border-radius:50%;background:#57d8cd;box-shadow:0 0 18px rgba(87,216,205,.85); }
+        .maintenance-orbit:before { top:18px;left:18px; }.maintenance-orbit:after { bottom:11px;right:18px;background:#f3bd70; }
+        .maintenance-icon { width:102px;height:102px;border-radius:31px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(45,127,179,.35),rgba(27,191,173,.11));border:1px solid rgba(91,214,207,.28);box-shadow:0 18px 40px rgba(0,0,0,.2); }
+        .maintenance-icon svg { width:58px;height:58px; }
+        .maintenance-eyebrow { color:#63d7ca; font-size:12px; font-weight:700; letter-spacing:1.5px; margin-bottom:12px; }
+        h1 { font-size:clamp(25px,4.1vw,38px);line-height:1.65;letter-spacing:-1px;margin:0 0 15px;font-weight:800; }
+        .maintenance-message { font-size:15px;line-height:2.15;color:#b6c7dc;margin:0 auto;max-width:520px;white-space:pre-line; }
+        .maintenance-divider { width:58px;height:3px;border-radius:4px;background:linear-gradient(90deg,#35c6bd,#438eca);margin:26px auto; }
+        .maintenance-progress { width:min(340px,100%);height:5px;border-radius:99px;background:rgba(179,203,229,.1);overflow:hidden;margin:0 auto 20px; }
+        .maintenance-progress span { display:block;width:38%;height:100%;border-radius:99px;background:linear-gradient(90deg,#2d7fb3,#37d0be);animation:progress 2.8s ease-in-out infinite alternate; }
+        .maintenance-caption { font-size:12px;color:#849ab4; }
+        .maintenance-admin { display:inline-flex;align-items:center;justify-content:center;gap:8px;margin-top:28px;padding:10px 17px;border:1px solid rgba(153,184,215,.22);border-radius:12px;color:#d9e7f7;text-decoration:none;font-size:13px;transition:.2s ease; }
+        .maintenance-admin:hover { color:#fff;border-color:rgba(87,216,205,.5);background:rgba(45,127,179,.12); }
+        .maintenance-footer { width:min(1080px,100%);margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:18px;color:#7187a1;font-size:11px; }
+        @keyframes orbit { to { transform:rotate(360deg); } } @keyframes progress { from{transform:translateX(170%)} to{transform:translateX(-40%)} }
+        @media(max-width:560px){.maintenance-shell{padding:20px 16px}.maintenance-header{align-items:flex-start}.maintenance-state{font-size:10px;padding:8px 10px}.maintenance-brand small{max-width:190px;line-height:1.7}.maintenance-main{padding:42px 0}.maintenance-card{border-radius:23px}.maintenance-art{transform:scale(.9);margin-bottom:13px}.maintenance-footer{justify-content:center;text-align:center;flex-wrap:wrap}.maintenance-footer span:last-child{display:none}}
+        @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}}
+    </style>
+</head>
+<body>
+    <div class="maintenance-shell">
+        <div class="maintenance-grid"></div>
+        <header class="maintenance-header">
+            <div class="maintenance-brand">
+                <div class="maintenance-brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.64 5.64l2.12 2.12m8.48 8.48 2.12 2.12m0-12.72-2.12 2.12m-8.48 8.48-2.12 2.12"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>
+                </div>
+                <div><strong>@Model.CompanyName</strong><small>@Model.SystemName</small></div>
+            </div>
+            <div class="maintenance-state"><i></i> عملیات نگهداری در حال انجام</div>
+        </header>
+        <main class="maintenance-main">
+            <section class="maintenance-card">
+                <div class="maintenance-art" aria-hidden="true">
+                    <div class="maintenance-orbit"></div>
+                    <div class="maintenance-icon">
+                        <svg viewBox="0 0 64 64" fill="none" stroke="#66ddd2" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M24 13a8 8 0 0 1 16 0v7H24z" opacity=".9"/>
+                            <path d="M19 20h26a5 5 0 0 1 5 5v24a5 5 0 0 1-5 5H19a5 5 0 0 1-5-5V25a5 5 0 0 1 5-5Z"/>
+                            <path d="m27 31-5 7h8l-3 8 11-12h-8l3-3"/>
+                            <path d="M8 29v14M56 29v14" opacity=".55"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="maintenance-eyebrow">SYSTEM MAINTENANCE</div>
+                <h1>کمی مکث؛ در حال بهتر کردن سامانه هستیم</h1>
+                <p class="maintenance-message">@message</p>
+                <div class="maintenance-divider"></div>
+                <div class="maintenance-progress"><span></span></div>
+                <div class="maintenance-caption">با پایان عملیات، دسترسی به‌صورت خودکار برقرار می‌شود.</div>
+                <a class="maintenance-admin" href="/Account/Login?admin=1">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4h-3"/><circle cx="10" cy="7" r="4"/><path d="m16 19 2 2 4-4"/></svg>
+                    ورود مدیر سامانه
+                </a>
+            </section>
+        </main>
+        <footer class="maintenance-footer"><span>© @DateTime.Now.Year @Model.CompanyName</span><span>از شکیبایی شما سپاسگزاریم</span></footer>
+    </div>
+</body>
+</html>
