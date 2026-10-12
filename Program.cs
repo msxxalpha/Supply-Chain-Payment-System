@@ -87,11 +87,11 @@ b.Services.AddControllersWithViews();b.Services.AddDataProtection();b.Services.A
             context.ShouldRenew = true;
     };
 });b.Services.AddAuthorization(o=>{o.AddPolicy("AdminOnly",p=>p.RequireClaim("IsAdmin","1"));foreach(var d in SecurityPermissions.Definitions)o.AddPolicy("Permission:"+d.Code,p=>p.RequireClaim(SecurityPermissions.Claim,d.Code));});
-var app=b.Build();using(var sc=app.Services.CreateScope()){var db=sc.ServiceProvider.GetRequiredService<AppDbContext>();await DatabaseInitializer.InitializeAsync(db);await DatabaseInitializer.EnsureSupplierInitialClaimAsync(db);await DatabaseInitializer.EnsureSupplierNonParticipationSchemaAsync(db);await DatabaseInitializer.EnsurePaymentSnapshotSchemaAsync(db);await DatabaseInitializer.EnsurePaymentLifecycleSchemaAsync(db);await DatabaseInitializer.EnsureAdvancedPaymentSchemaAsync(db);await DatabaseInitializer.EnsureSecuritySchemaAsync(db);await DatabaseInitializer.EnsureCompanySettingsAsync(db);await DatabaseInitializer.EnsureQueryAndPriceListSchemaAsync(db);await DatabaseInitializer.EnsurePriceDebtAdjustmentSchemaAsync(db);await DatabaseInitializer.EnsureSupplierPartAssessmentSchemaAsync(db);await DatabaseInitializer.SeedAsync(db);await DatabaseInitializer.SeedSecurityAsync(db);await DatabaseInitializer.SeedSystemParametersAsync(db);var pwd=app.Configuration["InitialAdminPassword"];if(string.IsNullOrWhiteSpace(pwd))throw new InvalidOperationException("InitialAdminPassword باید تنظیم شود.");if(!await db.Users.AnyAsync(x=>x.IsAdmin)){db.Users.Add(new AppUser{UserName="admin",DisplayName="مدیر سامانه پرداخت",IsAdmin=true,IsActive=true,PasswordHash=PasswordHasher.Hash(pwd)});await db.SaveChangesAsync();}await DatabaseInitializer.EnsureAdministratorRoleAssignmentAsync(db);await DatabaseInitializer.EnsureEvaluatorDefaultScoresAsync(db);}
+var app=b.Build();using(var sc=app.Services.CreateScope()){var db=sc.ServiceProvider.GetRequiredService<AppDbContext>();await DatabaseInitializer.InitializeAsync(db);await DatabaseInitializer.EnsureSupplierInitialClaimAsync(db);await DatabaseInitializer.EnsureSupplierNonParticipationSchemaAsync(db);await DatabaseInitializer.EnsurePaymentSnapshotSchemaAsync(db);await DatabaseInitializer.EnsurePaymentLifecycleSchemaAsync(db);await DatabaseInitializer.EnsureAdvancedPaymentSchemaAsync(db);await DatabaseInitializer.EnsureSecuritySchemaAsync(db);await DatabaseInitializer.EnsureRoleEvaluatorLoggingSchemaAsync(db);await DatabaseInitializer.EnsureCompanySettingsAsync(db);await DatabaseInitializer.EnsureQueryAndPriceListSchemaAsync(db);await DatabaseInitializer.EnsurePriceDebtAdjustmentSchemaAsync(db);await DatabaseInitializer.EnsureSupplierPartAssessmentSchemaAsync(db);await DatabaseInitializer.SeedAsync(db);await DatabaseInitializer.SeedSecurityAsync(db);await DatabaseInitializer.SeedSystemParametersAsync(db);var pwd=app.Configuration["InitialAdminPassword"];if(string.IsNullOrWhiteSpace(pwd))throw new InvalidOperationException("InitialAdminPassword باید تنظیم شود.");if(!await db.Users.AnyAsync(x=>x.IsAdmin)){db.Users.Add(new AppUser{UserName="admin",DisplayName="مدیر سامانه پرداخت",IsAdmin=true,IsActive=true,PasswordHash=PasswordHasher.Hash(pwd)});await db.SaveChangesAsync();}await DatabaseInitializer.EnsureAdministratorRoleAssignmentAsync(db);await DatabaseInitializer.EnsureEvaluatorDefaultScoresAsync(db);}
 if(!app.Environment.IsDevelopment())app.UseExceptionHandler("/Home/Error");app.UseStaticFiles();app.UseRouting();app.UseSession();app.UseAuthentication();app.UseAuthorization();
 app.Use(async (context,next)=>{
     await next();
-    if(context.User.Identity?.IsAuthenticated==true && context.User.IsInRole("SUPPLIER_PART_ASSESSOR"))
+    if(context.User.Identity?.IsAuthenticated==true)
     {
         var userIdValue=context.User.FindFirst("UserId")?.Value;
         if(int.TryParse(userIdValue,out var userId))
@@ -99,6 +99,8 @@ app.Use(async (context,next)=>{
             try
             {
                 var db=context.RequestServices.GetRequiredService<AppDbContext>();
+                var shouldTrack=await db.UserRoles.AnyAsync(x=>x.UserId==userId && x.Role!.IsActive && x.Role.IsEvaluatorLogEnabled);
+                if(!shouldTrack)return;
                 var now=DateTime.UtcNow;
                 var session=await db.UserActivitySessions
                     .Where(x=>x.UserId==userId && x.LogoutAtUtc==null)

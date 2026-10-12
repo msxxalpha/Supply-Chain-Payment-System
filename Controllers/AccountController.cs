@@ -38,10 +38,10 @@ public class AccountController(AppDbContext db,CompanySettingsService companySet
  }
 
  [AllowAnonymous][HttpGet] public async Task<IActionResult> Login(string? returnUrl=null)=>User.Identity?.IsAuthenticated==true?Redirect(LoginRedirectUrl(returnUrl)):(IActionResult)View(new LoginVm{returnUrl=returnUrl,Company=await companySettings.GetAsync()});
- [AllowAnonymous][HttpPost][ValidateAntiForgeryToken] public async Task<IActionResult> Login(LoginVm m){if(string.IsNullOrWhiteSpace(m.UserName)||string.IsNullOrWhiteSpace(m.Password)){ModelState.AddModelError("","نام کاربری و رمز عبور الزامی است.");m.Company=await companySettings.GetAsync();return View(m);}var u=await db.Users.SingleOrDefaultAsync(x=>x.UserName==m.UserName.Trim()&&x.IsActive);if(u==null||!PasswordHasher.Verify(m.Password,u.PasswordHash)){ModelState.AddModelError("","نام کاربری یا رمز عبور نادرست است.");m.Company=await companySettings.GetAsync();return View(m);}var roleCodes=await db.UserRoles.Where(x=>x.UserId==u.Id&&x.Role!.IsActive).Select(x=>x.Role!.Code).Distinct().ToListAsync();var permissionCodes=await db.UserRoles.Where(x=>x.UserId==u.Id&&x.Role!.IsActive).Join(db.RolePermissions,ur=>ur.RoleId,rp=>rp.RoleId,(ur,rp)=>rp).Where(x=>x.Permission!.Code!="").Select(x=>x.Permission!.Code).Distinct().ToListAsync();if(u.IsAdmin)permissionCodes=SecurityPermissions.AllCodes.ToList();var claimList=new List<Claim>{new(ClaimTypes.Name,u.DisplayName),new("UserId",u.Id.ToString()),new("IsAdmin",u.IsAdmin?"1":"0")};claimList.AddRange(roleCodes.Select(x=>new Claim(ClaimTypes.Role,x)));claimList.AddRange(permissionCodes.Select(x=>new Claim(SecurityPermissions.Claim,x)));var claims=claimList.ToArray();
+ [AllowAnonymous][HttpPost][ValidateAntiForgeryToken] public async Task<IActionResult> Login(LoginVm m){if(string.IsNullOrWhiteSpace(m.UserName)||string.IsNullOrWhiteSpace(m.Password)){ModelState.AddModelError("","نام کاربری و رمز عبور الزامی است.");m.Company=await companySettings.GetAsync();return View(m);}var u=await db.Users.SingleOrDefaultAsync(x=>x.UserName==m.UserName.Trim()&&x.IsActive);if(u==null||!PasswordHasher.Verify(m.Password,u.PasswordHash)){ModelState.AddModelError("","نام کاربری یا رمز عبور نادرست است.");m.Company=await companySettings.GetAsync();return View(m);}var roleCodes=await db.UserRoles.Where(x=>x.UserId==u.Id&&x.Role!.IsActive).Select(x=>x.Role!.Code).Distinct().ToListAsync();var shouldLogEvaluatorActivity=await db.UserRoles.AnyAsync(x=>x.UserId==u.Id&&x.Role!.IsActive&&x.Role.IsEvaluatorLogEnabled);var permissionCodes=await db.UserRoles.Where(x=>x.UserId==u.Id&&x.Role!.IsActive).Join(db.RolePermissions,ur=>ur.RoleId,rp=>rp.RoleId,(ur,rp)=>rp).Where(x=>x.Permission!.Code!="").Select(x=>x.Permission!.Code).Distinct().ToListAsync();if(u.IsAdmin)permissionCodes=SecurityPermissions.AllCodes.ToList();var claimList=new List<Claim>{new(ClaimTypes.Name,u.DisplayName),new("UserId",u.Id.ToString()),new("IsAdmin",u.IsAdmin?"1":"0")};claimList.AddRange(roleCodes.Select(x=>new Claim(ClaimTypes.Role,x)));claimList.AddRange(permissionCodes.Select(x=>new Claim(SecurityPermissions.Claim,x)));if(shouldLogEvaluatorActivity)claimList.Add(new Claim("EvaluatorLogEnabled","1"));var claims=claimList.ToArray();
   var signedInPrincipal = new ClaimsPrincipal(new ClaimsIdentity(claims,CookieAuthenticationDefaults.AuthenticationScheme));
   await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,signedInPrincipal);
-  if(roleCodes.Contains("SUPPLIER_PART_ASSESSOR",StringComparer.OrdinalIgnoreCase))
+  if(shouldLogEvaluatorActivity)
   {
       var now=DateTime.UtcNow;
       var previous=await db.UserActivitySessions.Where(x=>x.UserId==u.Id&&x.LogoutAtUtc==null).ToListAsync();
@@ -54,7 +54,7 @@ public class AccountController(AppDbContext db,CompanySettingsService companySet
       db.UserActivitySessions.Add(new UserActivitySession
       {
           UserId=u.Id,
-          RoleCode="SUPPLIER_PART_ASSESSOR",
+          RoleCode="EVALUATOR_ACTIVITY",
           LoginAtUtc=now,
           LastSeenAtUtc=now,
           DurationSeconds=0
@@ -64,7 +64,7 @@ public class AccountController(AppDbContext db,CompanySettingsService companySet
   return Redirect(LoginRedirectUrl(m.returnUrl, signedInPrincipal));}
  [Authorize][HttpPost][ValidateAntiForgeryToken] public async Task<IActionResult> Logout(){
   var userIdValue=User.FindFirst("UserId")?.Value;
-  if(int.TryParse(userIdValue,out var userId) && User.IsInRole("SUPPLIER_PART_ASSESSOR"))
+  if(int.TryParse(userIdValue,out var userId))
   {
       var now=DateTime.UtcNow;
       var active=await db.UserActivitySessions.Where(x=>x.UserId==userId&&x.LogoutAtUtc==null).ToListAsync();
@@ -82,11 +82,10 @@ public class AccountController(AppDbContext db,CompanySettingsService companySet
  [Authorize][HttpPost][ValidateAntiForgeryToken]
  public async Task<IActionResult> PingEvaluatorActivity()
  {
-  if(!User.IsInRole("SUPPLIER_PART_ASSESSOR"))
-      return NoContent();
-
   var userIdValue=User.FindFirst("UserId")?.Value;
   if(!int.TryParse(userIdValue,out var userId))
+      return NoContent();
+  if(!await db.UserRoles.AnyAsync(x=>x.UserId==userId&&x.Role!.IsActive&&x.Role.IsEvaluatorLogEnabled))
       return NoContent();
 
   try

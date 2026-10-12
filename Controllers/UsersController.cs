@@ -14,7 +14,7 @@ public class UsersController(AppDbContext db):Controller
 
  [HttpGet]
  public async Task<IActionResult> Index(){
-  var activitySessions=await db.UserActivitySessions.AsNoTracking().Include(x=>x.User).Where(x=>x.RoleCode=="SUPPLIER_PART_ASSESSOR").OrderByDescending(x=>x.LoginAtUtc).Take(200).ToListAsync();
+  var activitySessions=await db.UserActivitySessions.AsNoTracking().Include(x=>x.User).Where(x=>x.RoleCode=="SUPPLIER_PART_ASSESSOR" || x.RoleCode=="EVALUATOR_ACTIVITY").OrderByDescending(x=>x.LoginAtUtc).Take(200).ToListAsync();
   var users=await db.Users.AsNoTracking().OrderBy(x=>x.UserName).ToListAsync();
   var userRoles=await db.UserRoles.Include(x=>x.Role).AsNoTracking().ToListAsync();
   var roles=await db.Roles.OrderBy(x=>x.IsSystem?0:1).ThenBy(x=>x.Title).ToListAsync();
@@ -47,13 +47,13 @@ public class UsersController(AppDbContext db):Controller
  }
 
  [HttpPost][ValidateAntiForgeryToken]
- public async Task<IActionResult> SaveRole(int? id,string code,string title,bool isActive,int[]? permissionIds){
+ public async Task<IActionResult> SaveRole(int? id,string code,string title,bool isActive,int[]? permissionIds,bool isEvaluatorLogEnabled=false){
   code=(code??"").Trim().ToUpperInvariant();title=(title??"").Trim();if(code==""||title==""){TempData["Error"]="کد و عنوان نقش الزامی است.";return RedirectToAction(nameof(Index));}
   var role=id.HasValue?await db.Roles.FindAsync(id.Value):null;if(id.HasValue&&role==null)return NotFound();
   if(role?.IsSystem==true&&code!="SYS_ADMIN"){TempData["Error"]="کد نقش سیستمی قابل تغییر نیست.";return RedirectToAction(nameof(Index));}
   if(role?.IsSystem==true&&!isActive){TempData["Error"]="نقش سیستمی مدیر سامانه را نمی‌توان غیرفعال کرد.";return RedirectToAction(nameof(Index));}
   if(await db.Roles.AnyAsync(x=>x.Id!=(id??0)&&x.Code==code)){TempData["Error"]="کد نقش تکراری است.";return RedirectToAction(nameof(Index));}
-  if(role==null){role=new AppRole{Code=code,Title=title,IsActive=isActive,IsSystem=false};db.Roles.Add(role);await db.SaveChangesAsync();}else{role.Code=code;role.Title=title;role.IsActive=isActive;await db.SaveChangesAsync();}
+  if(role==null){role=new AppRole{Code=code,Title=title,IsActive=isActive,IsSystem=false,IsEvaluatorLogEnabled=isEvaluatorLogEnabled};db.Roles.Add(role);await db.SaveChangesAsync();}else{role.Code=code;role.Title=title;role.IsActive=isActive;role.IsEvaluatorLogEnabled=isEvaluatorLogEnabled;await db.SaveChangesAsync();}
   var selected=(permissionIds??[]).Distinct().ToHashSet();if(role.IsSystem){var all=await db.Permissions.Select(x=>x.Id).ToListAsync();selected=all.ToHashSet();isActive=true;}var valid=await db.Permissions.Where(x=>selected.Contains(x.Id)).Select(x=>x.Id).ToListAsync();var old=await db.RolePermissions.Where(x=>x.RoleId==role.Id).ToListAsync();db.RolePermissions.RemoveRange(old);db.RolePermissions.AddRange(valid.Select(permissionId=>new AppRolePermission{RoleId=role.Id,PermissionId=permissionId}));await db.SaveChangesAsync();
   await Log(id.HasValue?"UPDATE":"CREATE","AppRole",role.Id.ToString(),$"نقش {role.Title} و دسترسی‌های آن به‌روزرسانی شد.");TempData["Result"]="نقش و سطح دسترسی آن ذخیره شد.";return RedirectToAction(nameof(Index));
  }

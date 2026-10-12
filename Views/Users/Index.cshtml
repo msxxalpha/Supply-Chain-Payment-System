@@ -75,7 +75,7 @@
      <div class="row g-3">
       <div class="col-md-3"><label class="form-label">کد نقش</label><input class="form-control" name="code" required></div>
       <div class="col-md-4"><label class="form-label">عنوان نقش</label><input class="form-control" name="title" required></div>
-      <div class="col-md-2 d-flex align-items-end"><label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" checked> فعال</label></div>
+      <div class="col-md-2 d-flex align-items-end"><label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" checked> فعال</label></div><div class="col-md-3 d-flex align-items-end"><label class="form-check"><input class="form-check-input" type="checkbox" name="isEvaluatorLogEnabled" value="true"> ثبت لاگ ارزیاب</label></div>
      </div>
      <div class="permission-grid mt-3">
       @foreach(var group in Model.Permissions.GroupBy(x=>x.GroupTitle))
@@ -94,14 +94,14 @@
    <div class="table-panel mt-3">
     <div class="toolbar"><input class="form-control" data-table-filter="#roles" placeholder="جست‌وجوی کد یا عنوان نقش..."></div>
     <div class="table-responsive"><table id="roles" class="table modern-table">
-     <thead><tr><th>کد</th><th>عنوان</th><th>نوع</th><th>وضعیت</th><th>تعداد دسترسی</th><th>عملیات</th></tr></thead>
+     <thead><tr><th>کد</th><th>عنوان</th><th>نوع</th><th>وضعیت</th><th>لاگ ارزیاب</th><th>تعداد دسترسی</th><th>عملیات</th></tr></thead>
      <tbody>
       @foreach(var role in Model.Roles)
       {
        var pids=Model.RolePermissionIds.GetValueOrDefault(role.Id,[]);
-       <tr><td class="fw-bold">@role.Code</td><td>@role.Title</td><td>@(role.IsSystem?"سیستمی":"سفارشی")</td><td>@(role.IsActive?"فعال":"غیرفعال")</td><td>@pids.Count</td><td><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#role-edit-@role.Id">ویرایش</button></td></tr>
+       <tr><td class="fw-bold">@role.Code</td><td>@role.Title</td><td>@(role.IsSystem?"سیستمی":"سفارشی")</td><td>@(role.IsActive?"فعال":"غیرفعال")</td><td>@(role.IsEvaluatorLogEnabled?"فعال":"غیرفعال")</td><td>@pids.Count</td><td><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#role-edit-@role.Id">ویرایش</button></td></tr>
        <tr class="collapse" id="role-edit-@role.Id">
-        <td colspan="6">
+        <td colspan="7">
          <form method="post" action="/Users/SaveRole">
           @Html.AntiForgeryToken()
           <input type="hidden" name="id" value="@role.Id">
@@ -114,6 +114,7 @@
             else
             {<label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" @(role.IsActive?"checked":"")> فعال</label>}
            </div>
+           <div class="col-md-3 d-flex align-items-end"><label class="form-check"><input class="form-check-input" type="checkbox" name="isEvaluatorLogEnabled" value="true" @(role.IsEvaluatorLogEnabled?"checked":"")> ثبت لاگ ارزیاب</label></div>
           </div>
           <div class="permission-grid mt-3">
            @foreach(var group in Model.Permissions.GroupBy(x=>x.GroupTitle))
