@@ -20,8 +20,9 @@ public class UsersController(AppDbContext db):Controller
   var roles=await db.Roles.OrderBy(x=>x.IsSystem?0:1).ThenBy(x=>x.Title).ToListAsync();
   var permissions=await db.Permissions.OrderBy(x=>x.GroupTitle).ThenBy(x=>x.SortOrder).ToListAsync();
   var rolePermissions=await db.RolePermissions.AsNoTracking().GroupBy(x=>x.RoleId).ToDictionaryAsync(g=>g.Key,g=>g.Select(x=>x.PermissionId).ToList());
+  var companySettings=await db.CompanySettings.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==1)??new CompanySettings();
   var userRows=users.Select(u=>new UserRow(u.Id,u.UserName,u.DisplayName,u.IsAdmin,u.IsActive,userRoles.Where(x=>x.UserId==u.Id).Select(x=>x.RoleId).ToList(),userRoles.Where(x=>x.UserId==u.Id&&x.Role!=null).Select(x=>x.Role!.Title).OrderBy(x=>x).ToList())).ToList();
-  return View(new UsersVm(userRows,roles,permissions,rolePermissions,activitySessions));
+  return View(new UsersVm(userRows,roles,permissions,rolePermissions,activitySessions,companySettings));
  }
 
  [HttpPost][ValidateAntiForgeryToken]
@@ -59,5 +60,20 @@ public class UsersController(AppDbContext db):Controller
  }
 
  public record UserRow(int Id,string UserName,string DisplayName,bool IsAdmin,bool IsActive,List<int> RoleIds,List<string> RoleTitles);
- public record UsersVm(List<UserRow> Users,List<AppRole> Roles,List<AppPermission> Permissions,Dictionary<int,List<int>> RolePermissionIds,List<UserActivitySession> ActivitySessions);
+ [HttpPost][ValidateAntiForgeryToken]
+ public async Task<IActionResult> SaveMaintenanceMode(bool maintenanceMode,string? maintenanceMessage)
+ {
+  if(!User.HasClaim("IsAdmin","1")&&!User.IsInRole("SYS_ADMIN"))return Forbid();
+  var settings=await db.CompanySettings.SingleOrDefaultAsync(x=>x.Id==1);
+  if(settings==null){settings=new CompanySettings();db.CompanySettings.Add(settings);}
+  settings.MaintenanceMode=maintenanceMode;
+  settings.MaintenanceMessage=string.IsNullOrWhiteSpace(maintenanceMessage)?"سامانه در حال انجام عملیات نگهداری و به‌روزرسانی است. پس از پایان عملیات، دسترسی مجدداً برقرار خواهد شد.":maintenanceMessage.Trim();
+  settings.UpdatedAt=DateTime.UtcNow;
+  await db.SaveChangesAsync();
+  await Log("UPDATE","MaintenanceMode","1",maintenanceMode?"حالت تعمیر و نگهداری فعال شد.":"حالت تعمیر و نگهداری غیرفعال شد.");
+  TempData["Result"]=maintenanceMode?"حالت تعمیر و نگهداری فعال شد؛ کاربران عادی صفحه اطلاع‌رسانی را می‌بینند.":"حالت تعمیر و نگهداری غیرفعال شد؛ دسترسی عادی برقرار است.";
+  return RedirectToAction(nameof(Index));
+ }
+
+ public record UsersVm(List<UserRow> Users,List<AppRole> Roles,List<AppPermission> Permissions,Dictionary<int,List<int>> RolePermissionIds,List<UserActivitySession> ActivitySessions,CompanySettings CompanySettings);
 }
