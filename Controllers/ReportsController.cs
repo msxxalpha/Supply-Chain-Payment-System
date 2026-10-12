@@ -130,7 +130,7 @@ public class ReportsController(FinancialReportingService reports, AppDbContext d
 
         var sessionsQuery = db.UserActivitySessions.AsNoTracking()
             .Include(x => x.User)
-            .Where(x => x.RoleCode == "SUPPLIER_PART_ASSESSOR");
+            .Where(x => x.RoleCode == "SUPPLIER_PART_ASSESSOR" || x.RoleCode == "EVALUATOR_ACTIVITY");
         if (start.HasValue) sessionsQuery = sessionsQuery.Where(x => x.LoginAtUtc >= start.Value);
         if (end.HasValue) sessionsQuery = sessionsQuery.Where(x => x.LoginAtUtc < end.Value);
 
@@ -139,7 +139,9 @@ public class ReportsController(FinancialReportingService reports, AppDbContext d
             .Include(x => x.AssessorUser)
             .Include(x => x.SupplierPart).ThenInclude(x => x!.Supplier)
             .Include(x => x.SupplierPart).ThenInclude(x => x!.Part)
-            .Include(x => x.PaymentParameter).AsQueryable();
+            .Include(x => x.PaymentParameter)
+            .Where(x => x.SupplierPart != null && x.SupplierPart.Supplier != null && x.SupplierPart.Supplier.IsActive && !x.SupplierPart.Supplier.IsNonParticipating && x.SupplierPart.Part != null && x.SupplierPart.Part.IsActive)
+            .AsQueryable();
         if (start.HasValue) scoreQuery = scoreQuery.Where(x => x.UpdatedAt >= start.Value);
         if (end.HasValue) scoreQuery = scoreQuery.Where(x => x.UpdatedAt < end.Value);
         var scores = await scoreQuery.ToListAsync();

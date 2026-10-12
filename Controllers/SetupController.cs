@@ -284,7 +284,7 @@ namespace Indamin.Payment.Controllers;
   var parameters=await db.PaymentParameters.Where(x=>x.IsActive&&x.Weight>0&&x.ScoringMethod==ParameterScoringMethod.Manual)
    .OrderBy(x=>x.SortOrder).ThenBy(x=>x.Title).ToListAsync();
   if(parameters.Count==0)return;
-  var mappingQuery=db.SupplierParts.Where(x=>x.IsActive&&x.Supplier!.IsActive&&x.Part!.IsActive);
+  var mappingQuery=db.SupplierParts.Where(x=>x.IsActive&&x.Supplier!.IsActive&&!x.Supplier.IsNonParticipating&&x.Part!.IsActive);
   if(supplierPartId.HasValue)mappingQuery=mappingQuery.Where(x=>x.Id==supplierPartId.Value);
   var mapIds=await mappingQuery.Select(x=>x.Id).ToListAsync();if(mapIds.Count==0)return;
   var adminId=await db.Users.Where(x=>x.IsAdmin).OrderBy(x=>x.Id).Select(x=>(int?)x.Id).FirstOrDefaultAsync();
