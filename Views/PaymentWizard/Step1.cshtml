@@ -1,5 +1,6 @@
 @model Indamin.Payment.Data.PaymentWizardState
 @using System.Globalization
+@using Indamin.Payment.Data
 @{
  ViewData["Title"]="گام اول؛ تعریف محاسبه";
  var budgetValue=Model.TotalAllocationBudget.ToString("0.##",CultureInfo.InvariantCulture);
@@ -10,12 +11,13 @@
 <form method="post" class="form-panel" id="step1Form">
 @Html.AntiForgeryToken()
 <div class="row g-3"><div class="col-lg-6"><label class="form-label">عنوان محاسبه</label><input class="form-control" name="Title" value="@Model.Title" required></div><div class="col-lg-3"><label class="form-label">مبلغ کل قابل تخصیص</label><input class="form-control" type="text" inputmode="decimal" id="totalAllocationBudgetDisplay" value="@budgetDisplay" autocomplete="off" required><input type="hidden" id="TotalAllocationBudget" name="TotalAllocationBudget" value="@budgetValue"><div id="totalAllocationBudgetWords" class="amount-words mt-2"></div></div><div class="col-lg-3"><label class="form-label">واحد مبلغ</label><input class="form-control" name="AmountUnit" value="@Model.AmountUnit"></div>
+<div class="col-lg-6"><label class="form-label">منبع اطلاعات رسیدها</label><select class="form-select" name="ReceiptSource"><option value="1" selected="@(Model.ReceiptSource==PaymentReceiptSource.Excel)">دریافت از فایل Excel</option><option value="2" selected="@(Model.ReceiptSource==PaymentReceiptSource.WarehouseSubsystem)">دریافت مستقیم از زیرسیستم انبار</option></select><div class="form-hint">در حالت دریافت مستقیم، فایل Excel در گام بعد نمایش داده نمی‌شود و کوئری «اطلاعات رسیدهای خرید انبار» اجرا خواهد شد.</div></div>
 <div class="col-lg-4"><label class="form-label">تاریخ محاسبه</label><div class="jalali-input"><input type="text" class="form-control" data-jalali-date autocomplete="off" name="CalculationDateJalali" value="@Model.CalculationDateJalali" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
 <div class="col-lg-4"><label class="form-label">از تاریخ رسید</label><div class="jalali-input"><input type="text" class="form-control" data-jalali-date autocomplete="off" name="PeriodFromJalali" value="@Model.PeriodFromJalali" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
 <div class="col-lg-4"><label class="form-label">تا تاریخ رسید</label><div class="jalali-input"><input type="text" class="form-control" data-jalali-date autocomplete="off" name="PeriodToJalali" value="@Model.PeriodToJalali" required><button class="date-trigger" type="button" data-jalali-trigger>▣</button></div></div>
 <div class="col-12"><label class="form-label">توضیحات</label><textarea class="form-control" name="Notes" rows="3">@Model.Notes</textarea></div></div>
 <div class="info-box mt-3"><b>منطق تخصیص:</b> ابتدا امتیاز وزنی هر رسید از مجموع «امتیاز × وزن ÷ ۱۰۰» به‌دست می‌آید. امتیاز پارامتر «مبلغ بدهی» در سطح تامین‌کننده محاسبه می‌شود؛ یعنی مجموع مانده بدهی همه رسیدهای هر تامین‌کننده نسبت به کل مانده بدهی جذب‌شده محاسبه و بر اساس محدوده‌های تعیین‌شده، یک امتیاز مشترک برای رسیدهای همان تامین‌کننده ایجاد می‌شود. سپس بودجه بین رسیدهای دارای مانده بدهی متناسب با امتیاز وزنی توزیع می‌شود و سقف مانده بدهی هر رسید رعایت خواهد شد.</div>
-<div class="step-actions"><span class="subtle">اطلاعات در نشست موقت کاربر نگهداری می‌شود تا مرحله تایید.</span><button class="btn btn-main btn-lg">ادامه به جذب Excel ←</button></div></form>
+<div class="step-actions"><span class="subtle">اطلاعات در نشست موقت کاربر نگهداری می‌شود تا مرحله تایید.</span><button class="btn btn-main btn-lg">ادامه به دریافت اطلاعات رسید ←</button></div></form>
 <script>
 (function(){
  const display=document.getElementById('totalAllocationBudgetDisplay'),hidden=document.getElementById('TotalAllocationBudget'),words=document.getElementById('totalAllocationBudgetWords'),unit=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.AmountUnit??"ریال"));

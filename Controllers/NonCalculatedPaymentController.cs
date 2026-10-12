@@ -96,11 +96,12 @@ public class NonCalculatedPaymentController(AppDbContext db, SupplierPrioritySer
     }
 
     [HttpGet]
-    public IActionResult Step2()
+    public async Task<IActionResult> Step2()
     {
         var s = Load();
-        if (s == null || s.Suppliers.Count == 0)
-            return RedirectToAction(nameof(Step1));
+        if (s == null || s.Suppliers.Count == 0) return RedirectToAction(nameof(Step1));
+        if (await RemoveNonParticipatingSuppliersAsync(s))
+            return RedirectToAction(s.Suppliers.Count > 0 ? nameof(Step2) : nameof(Step1));
         return View(s);
     }
 
@@ -109,8 +110,9 @@ public class NonCalculatedPaymentController(AppDbContext db, SupplierPrioritySer
     public async Task<IActionResult> Preview(List<NonCalculatedSupplierEditItem> items)
     {
         var s = Load();
-        if (s == null || s.Suppliers.Count == 0)
-            return RedirectToAction(nameof(Step1));
+        if (s == null || s.Suppliers.Count == 0) return RedirectToAction(nameof(Step1));
+        if (await RemoveNonParticipatingSuppliersAsync(s))
+            return RedirectToAction(s.Suppliers.Count > 0 ? nameof(Step2) : nameof(Step1));
 
         try
         {
@@ -136,11 +138,12 @@ public class NonCalculatedPaymentController(AppDbContext db, SupplierPrioritySer
     }
 
     [HttpGet]
-    public IActionResult Step3()
+    public async Task<IActionResult> Step3()
     {
         var s = Load();
-        if (s == null || s.Suppliers.Count == 0)
-            return RedirectToAction(nameof(Step1));
+        if (s == null || s.Suppliers.Count == 0) return RedirectToAction(nameof(Step1));
+        if (await RemoveNonParticipatingSuppliersAsync(s))
+            return RedirectToAction(s.Suppliers.Count > 0 ? nameof(Step2) : nameof(Step1));
         return View(s);
     }
 
@@ -150,8 +153,10 @@ public class NonCalculatedPaymentController(AppDbContext db, SupplierPrioritySer
     public async Task<IActionResult> Finalize()
     {
         var s = Load();
-        if (s == null || s.Suppliers.Count == 0)
-            return RedirectToAction(nameof(Step1));
+        if (s == null || s.Suppliers.Count == 0) return RedirectToAction(nameof(Step1));
+        if (await RemoveNonParticipatingSuppliersAsync(s))
+            return RedirectToAction(s.Suppliers.Count > 0 ? nameof(Step2) : nameof(Step1));
+        if (s.Suppliers.Count == 0) return RedirectToAction(nameof(Step1));
 
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         try
@@ -206,6 +211,8 @@ public class NonCalculatedPaymentController(AppDbContext db, SupplierPrioritySer
 
             var runDate = PersianDateService.Parse(s.PaymentDateJalali);
             var now = DateTime.UtcNow;
+            var excludedSelected = await db.Suppliers.AsNoTracking().AnyAsync(x => s.Suppliers.Select(y => y.SupplierId).Contains(x.Id) && x.IsNonParticipating);
+            if (excludedSelected) throw new InvalidOperationException("یک تامین‌کننده انتخاب‌شده از مشارکت در سامانه خارج شده است؛ مرحله اول را مجدداً انجام دهید.");
             var user = await db.Users.FindAsync(UserId);
             var totalRequested = Math.Round(s.Suppliers.Sum(x => x.Amount), 2);
             var totalCapacity = Math.Round(
@@ -338,6 +345,9 @@ public class NonCalculatedPaymentController(AppDbContext db, SupplierPrioritySer
                         SupplierTitle = receipt.Receipt.SupplierTitle,
                         PartId = receipt.Receipt.PartId,
                         SupplierId = receipt.Receipt.SupplierId,
+                        DebtCalculationMethod = receipt.Receipt.DebtCalculationMethod,
+                        AppliedUnitPrice = receipt.Receipt.AppliedUnitPrice,
+                        PriceListItemId = receipt.Receipt.PriceListItemId,
                         OriginalDebt = receipt.Receipt.OriginalDebt,
                         ReceiptDate = receipt.Receipt.ReceiptDate,
                         ReceiptDateJalali = PersianDateService.ToJalali(receipt.Receipt.ReceiptDate),
@@ -509,6 +519,18 @@ public class NonCalculatedPaymentController(AppDbContext db, SupplierPrioritySer
     {
         var json = HttpContext.Session.GetString(SessionKey);
         return string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<NonCalculatedPaymentWizardState>(json);
+    }
+
+    async Task<bool> RemoveNonParticipatingSuppliersAsync(NonCalculatedPaymentWizardState s)
+    {
+        var excludedIds = (await db.Suppliers.AsNoTracking().Where(x => x.IsNonParticipating).Select(x => x.Id).ToListAsync()).ToHashSet();
+        var removed = s.Suppliers.RemoveAll(x => excludedIds.Contains(x.SupplierId));
+        if (removed == 0) return false;
+        s.AvailableSuppliers = await priority.GetAsync();
+        s.Step = 2;
+        Save(s);
+        TempData["Error"] = $"{removed} تامین‌کننده‌ای که عدم مشارکت آن فعال شده بود از پرداخت غیرمحاسباتی حذف شد؛ پیش‌نمایش را دوباره بررسی کنید.";
+        return true;
     }
 
     void Save(NonCalculatedPaymentWizardState s)

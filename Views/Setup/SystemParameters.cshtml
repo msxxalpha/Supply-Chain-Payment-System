@@ -9,6 +9,7 @@
     var minAge = Model.FirstOrDefault(x=>x.Code=="MIN_EFFECTIVE_DEBT_AGE")?.Value ?? 0m;
     var minAmount = Model.FirstOrDefault(x=>x.Code=="MIN_ALLOCATION_AMOUNT")?.Value ?? 1m;
     var rounding = Model.FirstOrDefault(x=>x.Code=="ALLOCATION_ROUNDING")?.Value ?? 100000m;
+    var currentClaimCalcMethod = (int)(Model.FirstOrDefault(x=>x.Code=="CURRENT_CLAIM_CALC_METHOD")?.Value ?? 1m);
 }
 <div class="mb-3">
     <div class="nav nav-tabs">
@@ -56,6 +57,16 @@
                     <div class="input-group"><input class="form-control" name="allocationRounding" type="number" min="1" step="1" value="@rounding"><span class="input-group-text">ریال</span></div>
                 </div>
             </div>
+            <div class="row g-3 mt-3">
+                <div class="col-md-6">
+                    <label class="form-label">نحوه محاسبه مطالبات جاری</label>
+                    <select class="form-select" name="currentClaimCalcMethod">
+                        <option value="1" selected="@(currentClaimCalcMethod==1)">دریافت اطلاعات ریالی</option>
+                        <option value="2" selected="@(currentClaimCalcMethod==2)">تعدادی بر اساس فهرست بها</option>
+                    </select>
+                    <div class="form-hint">در حالت تعدادی، بدهی جاری هر رسید از مقدار رسید × آخرین قیمت معتبر کالا–تامین‌کننده در تاریخ رسید محاسبه می‌شود.</div>
+                </div>
+            </div>
             <div class="form-hint mt-3">رسید فقط وقتی واجد تخصیص است که سن بدهی آن <b>بیشتر از</b> حداقل سن موثر باشد. مبلغ تخصیص هر رسید نیز باید <b>بیشتر از</b> حداقل مبلغ و مضربی از ضریب مبلغ محاسباتی باشد.</div>
         </div>
     </div>
@@ -94,7 +105,7 @@
                 <tr>
                     <td class="fw-bold">@x.Title</td>
                     <td>@(x.ValueType==SystemParameterValueType.Percentage?"درصد":x.ValueType==SystemParameterValueType.Amount?"مبلغ":"عدد")</td>
-                    <td>@x.Value.ToString("N0")</td>
+                    <td>@(x.Code=="CURRENT_CLAIM_CALC_METHOD" ? (x.Value==2 ? "تعدادی بر اساس فهرست بها" : "دریافت اطلاعات ریالی") : x.Value.ToString("N0"))</td>
                     <td>@x.Unit</td>
                 </tr>
             }

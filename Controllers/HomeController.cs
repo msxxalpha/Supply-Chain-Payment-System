@@ -5,8 +5,16 @@ using Microsoft.AspNetCore.Mvc;
 namespace Indamin.Payment.Controllers;
 
 [Authorize(Policy = SecurityPermissions.DashboardView)]
-public class HomeController(FinancialReportingService reports) : Controller
+public class HomeController(FinancialReportingService reports, CompanySettingsService companySettings) : Controller
 {
+    [AllowAnonymous]
+    public async Task<IActionResult> Maintenance()
+    {
+        var settings = await companySettings.GetAsync();
+        if (!settings.MaintenanceMode) return RedirectToAction("Login", "Account");
+        return View(settings);
+    }
+
     public async Task<IActionResult> Index()
     {
         var data = await reports.GetDashboardAsync();

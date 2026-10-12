@@ -1,5 +1,6 @@
 @model Indamin.Payment.Data.PaymentWizardState
 @using Indamin.Payment.Data
+@using Indamin.Payment.Services
 @{
  ViewData["Title"]="گام دوم؛ جذب و محاسبه";
  var idx=0;
@@ -10,18 +11,36 @@
 @if(Model.ImportErrorGroups.Count>0){
 <div class="modal fade" id="importErrorsModal" tabindex="-1" aria-labelledby="importErrorsLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
  <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable"><div class="modal-content border-0 shadow-lg import-errors-modal">
-  <div class="modal-header"><div><h5 class="modal-title" id="importErrorsLabel">نتیجه کنترل فایل Excel</h5><div class="subtle mt-1">همه خطاهای شناسایی‌شده در یک پنجره و بر اساس نوع خطا دسته‌بندی شده‌اند.</div></div><button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal" aria-label="بستن"></button></div>
-  <div class="modal-body"><div class="alert alert-danger d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><span><b>مجموع موارد قابل اصلاح:</b> @Model.ImportErrorGroups.Sum(x=>x.Errors.Count)</span><span class="small">پس از اصلاح فایل، آن را مجدداً بارگذاری کنید.</span></div>
+  <div class="modal-header"><div><h5 class="modal-title" id="importErrorsLabel">نتیجه کنترل رسیدها</h5><div class="subtle mt-1">همه خطاهای شناسایی‌شده در یک پنجره و بر اساس نوع خطا دسته‌بندی شده‌اند.</div></div><button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal" aria-label="بستن"></button></div>
+  <div class="modal-body"><div class="alert alert-danger d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><span><b>مجموع خطاهای شناسایی‌شده:</b> @Model.ImportErrorGroups.Sum(x=>x.Errors.Count)</span><span class="small">در صورت اصلاح داده‌ها، دریافت/بارگذاری را مجدداً انجام دهید.</span></div>
    <ul class="nav nav-tabs import-error-tabs mb-3" role="tablist">@for(var gi=0;gi<Model.ImportErrorGroups.Count;gi++){var g=Model.ImportErrorGroups[gi];<li class="nav-item" role="presentation"><button class="nav-link @(gi==0?"active":"")" id="import-error-tab-button-@g.Key" data-bs-toggle="tab" data-bs-target="#import-error-tab-@g.Key" type="button" role="tab" aria-controls="import-error-tab-@g.Key" aria-selected="@(gi==0?"true":"false")"><span>@g.Title</span> <span class="badge text-bg-danger ms-1">@g.Errors.Count</span></button></li>}</ul>
    <div class="tab-content">@for(var gi=0;gi<Model.ImportErrorGroups.Count;gi++){var g=Model.ImportErrorGroups[gi];<div class="tab-pane fade @(gi==0?"show active":"")" id="import-error-tab-@g.Key" role="tabpanel" aria-labelledby="import-error-tab-button-@g.Key"><div class="error-list-panel"><div class="d-flex justify-content-between align-items-center mb-2"><b>@g.Title</b><span class="badge rounded-pill text-bg-secondary">@g.Errors.Count مورد</span></div><ol class="mb-0 pe-3">@foreach(var error in g.Errors){<li class="mb-2">@error</li>}</ol></div></div>}</div>
   </div>
-  <div class="modal-footer"><span class="subtle me-auto">هیچ خطایی به‌صورت پنجره جداگانه نمایش داده نمی‌شود.</span><button type="button" class="btn btn-main" data-bs-dismiss="modal">بستن و اصلاح فایل</button></div>
+  <div class="modal-footer">
+   <span class="subtle me-auto">خطاهای ساختاری و اتصال قابل نادیده گرفتن نیستند.</span>
+   @if(Model.CanIgnoreImportErrors && Model.ImportedReceipts.Count>0)
+   {
+    <form method="post" action="/PaymentWizard/ContinueWithIgnoredErrors" class="d-flex align-items-center gap-3 flex-wrap">
+     @Html.AntiForgeryToken()
+     <label class="form-check mb-0"><input class="form-check-input" type="checkbox" name="ignoreErrors" value="true" id="ignoreImportErrors"> <span class="form-check-label fw-semibold" for="ignoreImportErrors">نادیده گرفتن خطاهای رکوردی و ادامه محاسبه با رکوردهای سالم</span></label>
+     <button type="submit" class="btn btn-main">ادامه با رکوردهای سالم</button>
+    </form>
+   }
+   <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">بستن</button>
+  </div>
  </div></div>
 </div>
 <script>document.addEventListener('DOMContentLoaded',function(){const m=document.getElementById('importErrorsModal');if(!m)return;if(window.bootstrap&&bootstrap.Modal){bootstrap.Modal.getOrCreateInstance(m).show();return;}m.classList.add('show');m.style.display='block';m.removeAttribute('aria-hidden');document.body.classList.add('modal-open');if(!document.getElementById('import-errors-fallback-backdrop')){const b=document.createElement('div');b.className='modal-backdrop fade show';b.id='import-errors-fallback-backdrop';document.body.appendChild(b);}});</script>
 }
-<div class="wizard-steps"><div class="wizard-step done"><span class="num">✓</span><div><b>تنظیمات محاسبه</b><small>@Model.CalculationDateJalali</small></div></div><div class="wizard-step active"><span class="num">۲</span><div><b>جذب و محاسبه</b><small>Excel، امتیاز و تخصیص</small></div></div><div class="wizard-step"><span class="num">۳</span><div><b>تجمیع و تایید</b><small>خلاصه تامین‌کنندگان</small></div></div></div>
-<div class="page-header"><div><div class="eyebrow">محاسبه نوبت پرداخت</div><h2>@Model.Title</h2><p class="text-muted">بازه رسید: @Model.PeriodFromJalali تا @Model.PeriodToJalali — فایل فعلی: @(Model.SourceFileName??"هنوز بارگذاری نشده")</p></div><div class="export-group">@if(Model.Rows.Count>0){<a class="btn btn-outline-secondary" href="/PaymentWizard/ExportPreview">خروجی Excel محاسبه</a>}</div></div>
+<div class="wizard-steps"><div class="wizard-step done"><span class="num">✓</span><div><b>تنظیمات محاسبه</b><small>@Model.CalculationDateJalali</small></div></div><div class="wizard-step active"><span class="num">۲</span><div><b>دریافت و محاسبه</b><small>@(Model.ReceiptSource==PaymentReceiptSource.Excel?"Excel":"زیرسیستم انبار")، کنترل و امتیاز</small></div></div><div class="wizard-step"><span class="num">۳</span><div><b>تجمیع و تایید</b><small>خلاصه تامین‌کنندگان</small></div></div></div>
+<div class="page-header"><div><div class="eyebrow">محاسبه نوبت پرداخت</div><h2>@Model.Title</h2><p class="text-muted">بازه رسید: @Model.PeriodFromJalali تا @Model.PeriodToJalali — منبع: @(Model.ReceiptSource==PaymentReceiptSource.Excel?"فایل Excel":"کوئری «اطلاعات رسیدهای خرید انبار»") — @(Model.SourceFileName??"هنوز دریافت نشده")</p></div><div class="export-group">@if(Model.Rows.Count>0){<a class="btn btn-outline-secondary" href="/PaymentWizard/ExportPreview">خروجی Excel محاسبه</a>}</div></div>
+@if(Model.ImportErrorsIgnored)
+{
+ <div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
+  <span><b>محاسبه با نادیده گرفتن خطاها انجام شد:</b> @Model.IgnoredImportRowNumbers.Count.ToString("N0") رکورد خطادار از محاسبه حذف شد و فقط رکوردهای سالم مبنا قرار گرفتند.</span>
+ </div>
+}
+
 <div class="row g-3 mb-3">
  <div class="col-xl-3 col-md-6"><div class="payment-kpi"><span>بودجه این نوبت</span><strong>@Model.TotalAllocationBudget.ToString("N0")</strong><small>ریال</small></div></div>
  <div class="col-xl-3 col-md-6"><div class="payment-kpi"><span>تخصیص استقراری</span><strong>@calcTotalInitial.ToString("N0")</strong><small>طبق سهم @Model.CalculatedInitialSharePercent.ToString("0.##")٪</small></div></div>
@@ -32,22 +51,29 @@
  <b>قواعد تخصیص این نوبت:</b>
  فقط رسیدهایی با <b>سن بدهی بیشتر از @Model.MinimumEffectiveDebtAge.ToString("N0") روز</b> واجد تخصیص هستند. مبلغ هر رسید مضربی از <b>@Model.AllocationRounding.ToString("N0") ریال</b> است. تخصیص محاسبه‌شده کمتر از <b>@Model.MinimumAllocationAmount.ToString("N0") ریال</b> از تخصیص حذف و بودجه آن به رسیدهای واجد شرایط منتقل می‌شود. سهم مطالبات استقراری و جاری نیز به‌ترتیب @Model.CalculatedInitialSharePercent.ToString("0.##")٪ و @Model.CalculatedCurrentSharePercent.ToString("0.##")٪ است؛ در صورت کافی نبودن یکی از دو منبع، باقیمانده سهم به منبع دیگر منتقل می‌شود.
 </div>
-<div class="form-panel mb-3"><div class="panel-title"><div><h4>جذب فاکتورها از Excel</h4><span>شماره رسید، انبار، نام کالا، نام تامین‌کننده، مبلغ بدهی و تاریخ رسید</span></div></div><form method="post" action="/PaymentWizard/Import" enctype="multipart/form-data" class="row g-2 align-items-end">@Html.AntiForgeryToken()<div class="col-lg-8"><label class="form-label">فایل Excel</label><input class="form-control" type="file" name="file" accept=".xlsx,.xls" required></div><div class="col-lg-4"><button class="btn btn-main w-100">جذب، کنترل و محاسبه</button></div></form></div>
-@if(Model.Rows.Count==0){<div class="info-box">برای شروع فایل Excel را بارگذاری کنید. سامانه اطلاعات پایه، ارتباط فعال کالا–تامین‌کننده، سابقه پرداخت‌های فعال و قواعد پارامترهای سیستم را کنترل می‌کند.</div>}
+@if(Model.ReceiptSource==PaymentReceiptSource.Excel)
+{
+<div class="form-panel mb-3"><div class="panel-title"><div><h4>جذب رسیدها از Excel</h4><span>شماره رسید، انبار، نام کالا، نام تامین‌کننده، مقدار رسید، مبلغ بدهی و تاریخ رسید</span></div></div><form method="post" action="/PaymentWizard/Import" enctype="multipart/form-data" class="row g-2 align-items-end">@Html.AntiForgeryToken()<div class="col-lg-8"><label class="form-label">فایل Excel</label><input class="form-control" type="file" name="file" accept=".xlsx,.xls" required><div class="form-hint">ستون جدید «مقدار رسید» الزامی است. در حالت فهرست بها، مبلغ بدهی از مقدار × آخرین قیمت معتبر محاسبه می‌شود.</div></div><div class="col-lg-4"><button class="btn btn-main w-100">دریافت، کنترل و محاسبه</button></div></form></div>
+}
+else
+{
+<div class="form-panel mb-3"><div class="panel-title"><div><h4>دریافت مستقیم از زیرسیستم انبار</h4><span>کوئری «اطلاعات رسیدهای خرید انبار» با بازه @Model.PeriodFromJalali تا @Model.PeriodToJalali اجرا می‌شود.</span></div></div><form method="post" action="/PaymentWizard/LoadWarehouse" class="row g-2 align-items-end">@Html.AntiForgeryToken()<div class="col-lg-8"><div class="info-box">خروجی کوئری باید شامل ستون‌های «شماره رسید»، «انبار»، «نام کالا»، «نام تامین کننده»، «مقدار رسید» و «تاریخ رسید» باشد. ستون «مبلغ بدهی» برای حالت دریافت اطلاعات ریالی نیز لازم است.</div></div><div class="col-lg-4"><button class="btn btn-main w-100">اجرای کوئری و دریافت رسیدها</button></div></form></div>
+}
+@if(Model.Rows.Count==0){<div class="info-box">@(Model.ReceiptSource==PaymentReceiptSource.Excel ? "برای شروع فایل Excel را بارگذاری کنید." : "برای شروع، دریافت مستقیم از زیرسیستم انبار را اجرا کنید.") سامانه اطلاعات پایه، ارتباط فعال کالا–تامین‌کننده، سابقه پرداخت‌های فعال و قواعد پارامترهای سیستم را کنترل می‌کند.</div>}
 @if(Model.Rows.Count>0){
 <form method="post" action="/PaymentWizard/UpdateScores">
  <div class="table-panel"><div class="panel-title"><div><h4>جزئیات محاسبه و امتیازدهی</h4><span>پارامترهای خودکار محاسبه شده‌اند؛ امتیازهای دستی قابل اصلاح هستند.</span></div><span class="validation-chip validation-ok">وزن فعال: @Model.Parameters.Sum(x=>x.Weight).ToString("0.####")٪</span></div>
  <div class="table-responsive table-scroll"><table class="table modern-table sticky-header"><thead><tr>
   <th>#</th><th>رسید</th><th>انبار</th><th>کالا</th><th>تامین‌کننده</th>
   <th>مطالبات استقراری تامین‌کننده</th><th>مطالبات جاری تامین‌کننده</th><th>مجموع مطالبات تامین‌کننده</th>
-  <th>بدهی رسید</th><th>تخصیص قبلی جاری</th><th>مانده جاری رسید</th><th>مهلت</th><th>سن بدهی</th>
+  <th>مقدار رسید</th><th>بدهی رسید</th><th>روش محاسبه بدهی</th><th>نرخ فهرست بها</th><th>تخصیص قبلی جاری</th><th>مانده جاری رسید</th><th>مهلت</th><th>سن بدهی</th>
   @foreach(var p in Model.Parameters){<th>@p.Title<br><span class="subtle">وزن @p.Weight٪</span></th>}
   <th>امتیاز وزنی</th><th>تخصیص استقراری محاسباتی</th><th>تخصیص جاری محاسباتی</th><th>مجموع تخصیص محاسباتی</th>
  </tr></thead><tbody>
  @for(var i=0;i<Model.Rows.Count;i++){var r=Model.Rows[i];<tr class="@(r.CalculatedAllocatedAmount>0?"":"table-light")">
   <td>@(i+1)</td><td class="fw-bold">@r.ReceiptNo</td><td>@r.Warehouse</td><td>@r.PartTitle</td><td>@r.SupplierTitle</td>
   <td>@r.SupplierInitialClaimAmount.ToString("N0")</td><td>@Math.Max(0,r.SupplierOutstandingDebt-r.SupplierInitialClaimAmount).ToString("N0")</td><td class="amount-emphasis">@r.SupplierOutstandingDebt.ToString("N0")</td>
-  <td>@r.OriginalDebt.ToString("N0")</td><td>@r.PreviousAllocated.ToString("N0")</td><td>@r.RemainingDebt.ToString("N0")</td><td>@r.ContractSettlementDays روز</td><td class="@(r.DebtAgeDays>Model.MinimumEffectiveDebtAge?"":"text-muted")">@r.DebtAgeDays روز</td>
+  <td>@r.ReceiptQuantity.ToString("N3")</td><td>@if(r.DebtCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList && r.PriceListItemId.HasValue){<button type="button" class="btn btn-link p-0 amount-emphasis debt-inspect-button" data-bs-toggle="modal" data-bs-target="#priceInspectModal" data-receipt="@r.ReceiptNo" data-part="@r.PartTitle" data-supplier="@r.SupplierTitle" data-date="@r.ReceiptDateJalali" data-qty="@r.ReceiptQuantity.ToString("N3")" data-price="@r.AppliedUnitPrice.ToString("N0")" data-from="@(r.AppliedPriceValidFrom.HasValue?PersianDateService.ToJalali(r.AppliedPriceValidFrom.Value):"")" data-to="@(r.AppliedPriceValidTo.HasValue?PersianDateService.ToJalali(r.AppliedPriceValidTo.Value):"")">@r.OriginalDebt.ToString("N0")</button>}else{@r.OriginalDebt.ToString("N0")}</td><td>@(r.DebtCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList?"تعدادی بر اساس فهرست بها":"دریافت اطلاعات ریالی")</td><td>@(r.AppliedUnitPrice>0?r.AppliedUnitPrice.ToString("N0"):"—")</td><td>@r.PreviousAllocated.ToString("N0")</td><td>@r.RemainingDebt.ToString("N0")</td><td>@r.ContractSettlementDays روز</td><td class="@(r.DebtAgeDays>Model.MinimumEffectiveDebtAge?"":"text-muted")">@r.DebtAgeDays روز</td>
   @foreach(var p in Model.Parameters){var sc=r.Scores.FirstOrDefault(x=>x.ParameterId==p.Id)??new PaymentScoreResult{ParameterId=p.Id,Score=0,Source="محاسبه خودکار"};var cellIndex=idx++;<td class="score-cell">@Html.Hidden($"items[{cellIndex}].RowIndex",i)@Html.Hidden($"items[{cellIndex}].ParameterId",p.Id)@if(sc.Source=="محاسبه خودکار"||sc.Source=="ارزیابی غیرفعال"){<span class="score-auto">@sc.Score</span>}else{<input class="form-control score-select" type="number" min="1" max="5" step="0.1" name="items[@cellIndex].Score" value="@sc.Score.ToString("0.##",System.Globalization.CultureInfo.InvariantCulture)" required><span class="subtle">دستی</span>}</td>}
   <td>@r.WeightedScore.ToString("0.000")</td><td class="amount-emphasis">@r.CalculatedInitialClaimAllocatedAmount.ToString("N0")</td><td class="amount-emphasis">@r.CalculatedCurrentAllocatedAmount.ToString("N0")</td><td class="amount-emphasis">@r.CalculatedAllocatedAmount.ToString("N0")</td>
  </tr>}
@@ -55,6 +81,39 @@
  <div class="step-actions">@Html.AntiForgeryToken()<span class="subtle">پس از اصلاح امتیازهای دستی، محاسبه مجدد با همین قوانین سیستم انجام می‌شود.</span><button type="submit" class="btn btn-outline-primary">ذخیره امتیازهای دستی و محاسبه مجدد</button></div>
  </div>
 </form>
+@if(Model.CurrentClaimCalculationMethod==CurrentClaimCalculationMethod.QuantityBasedPriceList)
+{
+<div class="modal fade" id="priceInspectModal" tabindex="-1" aria-labelledby="priceInspectLabel" aria-hidden="true">
+ <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg">
+  <div class="modal-header"><h5 class="modal-title" id="priceInspectLabel">جزئیات نرخ فهرست بها برای بدهی رسید</h5><button type="button" class="btn-close ms-0 me-auto" data-bs-dismiss="modal" aria-label="بستن"></button></div>
+  <div class="modal-body"><form id="priceInspectForm" class="row g-3">
+   <div class="col-md-6"><label class="form-label">شماره رسید</label><input id="priceReceipt" class="form-control" readonly></div>
+   <div class="col-md-6"><label class="form-label">تاریخ رسید</label><input id="priceReceiptDate" class="form-control" readonly></div>
+   <div class="col-md-6"><label class="form-label">کالا</label><input id="pricePart" class="form-control" readonly></div>
+   <div class="col-md-6"><label class="form-label">تامین‌کننده</label><input id="priceSupplier" class="form-control" readonly></div>
+   <div class="col-md-4"><label class="form-label">مقدار رسید</label><input id="priceQty" class="form-control" readonly></div>
+   <div class="col-md-4"><label class="form-label">قیمت خرید (فی)</label><input id="priceUnit" class="form-control" readonly></div>
+   <div class="col-md-4"><label class="form-label">بدهی محاسبه‌شده</label><input id="priceDebt" class="form-control" readonly></div>
+   <div class="col-md-6"><label class="form-label">تاریخ شروع نرخ</label><input id="priceFrom" class="form-control" readonly></div>
+   <div class="col-md-6"><label class="form-label">تاریخ پایان نرخ</label><input id="priceTo" class="form-control" readonly></div>
+   <div class="col-12"><div class="info-box">فرمول: مقدار رسید × قیمت خرید (فی) = بدهی رسید. در صورت وجود هم‌پوشانی، آخرین قیمت با تاریخ شروع معتبر انتخاب شده است.</div></div>
+  </form></div>
+  <div class="modal-footer"><button type="button" class="btn btn-main" data-bs-dismiss="modal">بستن</button></div>
+ </div></div>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded",function(){
+ document.querySelectorAll(".debt-inspect-button").forEach(function(btn){
+  btn.addEventListener("click",function(){
+   const map={priceReceipt:"receipt",pricePart:"part",priceSupplier:"supplier",priceReceiptDate:"date",priceQty:"qty",priceUnit:"price",priceFrom:"from",priceTo:"to"};
+   Object.keys(map).forEach(function(id){document.getElementById(id).value=btn.dataset[map[id]]||"";});
+   const q=parseFloat((btn.dataset.qty||"0").replace(/,/g,""))||0,p=parseFloat((btn.dataset.price||"0").replace(/,/g,""))||0;
+   document.getElementById("priceDebt").value=new Intl.NumberFormat("fa-IR").format(Math.round(q*p));
+  });
+ });
+});
+</script>
+}
 <div class="info-box mt-3"><b>توجه به مبلغ بدهی:</b> امتیاز مبلغ بدهی بر مبنای مجموع مطالبات استقراری و جاری هر تامین‌کننده محاسبه می‌شود. <b>توجه به سابقه:</b> از هر رسید فقط مانده جاری آن پس از پرداخت‌های قبلی قابل تخصیص است؛ مطالبات استقراری در فیلد تامین‌کننده نگهداری می‌شود.</div>
 <div class="step-actions"><form method="post" action="/PaymentWizard/Cancel">@Html.AntiForgeryToken()<button class="btn btn-outline-secondary">لغو محاسبه</button></form><form method="post" action="/PaymentWizard/GoStep3">@Html.AntiForgeryToken()<button class="btn btn-main btn-lg">تایید جدول و رفتن به خلاصه تامین‌کنندگان ←</button></form></div>
 }

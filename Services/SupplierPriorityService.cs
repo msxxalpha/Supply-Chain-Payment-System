@@ -16,6 +16,9 @@ public class SupplierPriorityService(FinancialReportingService reporting)
                 InitialClaimAmount = x.InitialClaim,
                 CurrentDebt = x.CurrentClaims,
                 Priority = x.Priority,
+                Coverage = x.Coverage,
+                AgeRatio = x.AgeRatio,
+                Overdue = x.Overdue,
                 OpenReceiptCount = x.OpenReceiptCount
             })
             .OrderByDescending(x => x.Priority)

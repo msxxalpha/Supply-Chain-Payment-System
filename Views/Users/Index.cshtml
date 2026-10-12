@@ -1,12 +1,27 @@
+@using Indamin.Payment.Services
 @model Indamin.Payment.Controllers.UsersController.UsersVm
 @{ViewData["Title"]="مدیریت کاربران، نقش‌ها و دسترسی‌ها";}
 <div class="page-header">
  <div><div class="eyebrow">امنیت سامانه</div><h2>مدیریت کاربران، نقش‌ها و سطح دسترسی</h2><p class="text-muted">دسترسی‌ها به صورت نقش‌محور تعریف می‌شوند و مجوز هر کارکرد اصلی سامانه قابل کنترل است.</p></div>
 </div>
+@if(User.HasClaim("IsAdmin","1")||User.IsInRole("SYS_ADMIN"))
+{
+ <div class="form-panel mb-4">
+  <div class="panel-title"><div><h4><span class="me-1">⚙</span> وضعیت تعمیر و نگهداری سامانه</h4><span>در زمان فعال بودن، کاربران عادی به صفحه اطلاع‌رسانی هدایت می‌شوند؛ مدیر سیستم همچنان به سامانه و این تنظیم دسترسی دارد.</span></div><span class="validation-chip @(Model.CompanySettings.MaintenanceMode?"validation-error":"validation-ok")">@(Model.CompanySettings.MaintenanceMode?"تعمیر و نگهداری فعال":"سامانه در دسترس")</span></div>
+  <form method="post" action="/Users/SaveMaintenanceMode" class="row g-3 align-items-end">
+   @Html.AntiForgeryToken()
+   <div class="col-md-4"><label class="form-check"><input class="form-check-input" type="checkbox" name="maintenanceMode" value="true" @(Model.CompanySettings.MaintenanceMode?"checked":"")> فعال‌سازی حالت تعمیر و نگهداری</label></div>
+   <div class="col-md-6"><label class="form-label">پیام نمایش به کاربران</label><textarea class="form-control" name="maintenanceMessage" rows="2" maxlength="1000">@Model.CompanySettings.MaintenanceMessage</textarea></div>
+   <div class="col-md-2"><button class="btn btn-main w-100">ذخیره وضعیت</button></div>
+  </form>
+  <div class="form-hint mt-2">برای جلوگیری از قفل شدن مدیر، صفحه مدیریت در حالت تعمیر و نگهداری برای حساب‌های مدیر سیستم قابل دسترسی باقی می‌ماند. در صورت خروج مدیر، ورود مدیریتی از پیوند صفحه تعمیر و نگهداری انجام می‌شود.</div>
+ </div>
+}
 <div class="base-data-tabs">
  <ul class="nav nav-tabs" role="tablist">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#users-pane" type="button">کاربران</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#roles-pane" type="button">نقش‌ها و دسترسی‌ها</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#activity-pane" type="button">فعالیت ارزیابان</button></li>
  </ul>
  <div class="tab-content">
   <div class="tab-pane fade show active" id="users-pane">
@@ -73,7 +88,7 @@
      <div class="row g-3">
       <div class="col-md-3"><label class="form-label">کد نقش</label><input class="form-control" name="code" required></div>
       <div class="col-md-4"><label class="form-label">عنوان نقش</label><input class="form-control" name="title" required></div>
-      <div class="col-md-2 d-flex align-items-end"><label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" checked> فعال</label></div>
+      <div class="col-md-2 d-flex align-items-end"><label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" checked> فعال</label></div><div class="col-md-3 d-flex align-items-end"><label class="form-check"><input class="form-check-input" type="checkbox" name="isEvaluatorLogEnabled" value="true"> ثبت لاگ ارزیاب</label></div>
      </div>
      <div class="permission-grid mt-3">
       @foreach(var group in Model.Permissions.GroupBy(x=>x.GroupTitle))
@@ -92,14 +107,14 @@
    <div class="table-panel mt-3">
     <div class="toolbar"><input class="form-control" data-table-filter="#roles" placeholder="جست‌وجوی کد یا عنوان نقش..."></div>
     <div class="table-responsive"><table id="roles" class="table modern-table">
-     <thead><tr><th>کد</th><th>عنوان</th><th>نوع</th><th>وضعیت</th><th>تعداد دسترسی</th><th>عملیات</th></tr></thead>
+     <thead><tr><th>کد</th><th>عنوان</th><th>نوع</th><th>وضعیت</th><th>لاگ ارزیاب</th><th>تعداد دسترسی</th><th>عملیات</th></tr></thead>
      <tbody>
       @foreach(var role in Model.Roles)
       {
        var pids=Model.RolePermissionIds.GetValueOrDefault(role.Id,[]);
-       <tr><td class="fw-bold">@role.Code</td><td>@role.Title</td><td>@(role.IsSystem?"سیستمی":"سفارشی")</td><td>@(role.IsActive?"فعال":"غیرفعال")</td><td>@pids.Count</td><td><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#role-edit-@role.Id">ویرایش</button></td></tr>
+       <tr><td class="fw-bold">@role.Code</td><td>@role.Title</td><td>@(role.IsSystem?"سیستمی":"سفارشی")</td><td>@(role.IsActive?"فعال":"غیرفعال")</td><td>@(role.IsEvaluatorLogEnabled?"فعال":"غیرفعال")</td><td>@pids.Count</td><td><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#role-edit-@role.Id">ویرایش</button></td></tr>
        <tr class="collapse" id="role-edit-@role.Id">
-        <td colspan="6">
+        <td colspan="7">
          <form method="post" action="/Users/SaveRole">
           @Html.AntiForgeryToken()
           <input type="hidden" name="id" value="@role.Id">
@@ -112,6 +127,7 @@
             else
             {<label class="form-check"><input class="form-check-input" type="checkbox" name="isActive" value="true" @(role.IsActive?"checked":"")> فعال</label>}
            </div>
+           <div class="col-md-3 d-flex align-items-end"><label class="form-check"><input class="form-check-input" type="checkbox" name="isEvaluatorLogEnabled" value="true" @(role.IsEvaluatorLogEnabled?"checked":"")> ثبت لاگ ارزیاب</label></div>
           </div>
           <div class="permission-grid mt-3">
            @foreach(var group in Model.Permissions.GroupBy(x=>x.GroupTitle))
@@ -134,6 +150,32 @@
    </div>
   </div>
  </div>
+  <div class="tab-pane fade" id="activity-pane">
+   <div class="form-panel mt-3">
+    <div class="panel-title"><div><h4>لاگ حضور ارزیابان قطعه–تامین‌کننده</h4><span>مدت حضور از زمان ورود تا خروج یا آخرین فعالیت محاسبه می‌شود.</span></div><span class="validation-chip validation-ok">@Model.ActivitySessions.Count.ToString("N0") نشست اخیر</span></div>
+    <div class="table-responsive table-scroll">
+     <table class="table modern-table align-middle">
+      <thead><tr><th>کاربر</th><th>ورود</th><th>آخرین فعالیت</th><th>خروج</th><th>مدت حضور</th><th>وضعیت</th></tr></thead>
+      <tbody>
+      @foreach(var x in Model.ActivitySessions)
+      {
+          var duration=TimeSpan.FromSeconds(Math.Max(0,x.DurationSeconds));
+          <tr>
+           <td class="fw-bold">@x.User?.DisplayName</td>
+           <td>@PersianDateService.ToJalali(x.LoginAtUtc.ToLocalTime()) @x.LoginAtUtc.ToLocalTime().ToString("HH:mm:ss")</td>
+           <td>@PersianDateService.ToJalali(x.LastSeenAtUtc.ToLocalTime()) @x.LastSeenAtUtc.ToLocalTime().ToString("HH:mm:ss")</td>
+           <td>@(x.LogoutAtUtc.HasValue ? PersianDateService.ToJalali(x.LogoutAtUtc.Value.ToLocalTime())+" "+x.LogoutAtUtc.Value.ToLocalTime().ToString("HH:mm:ss") : "—")</td>
+           <td class="amount-emphasis">@($"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}")</td>
+           <td>@(x.LogoutAtUtc.HasValue ? "خارج شده" : "فعال / آخرین فعالیت ثبت‌شده")</td>
+          </tr>
+      }
+      @if(Model.ActivitySessions.Count==0){<tr><td colspan="6" class="text-center text-muted py-4">هنوز نشست ارزیابی ثبت نشده است.</td></tr>}
+      </tbody>
+     </table>
+    </div>
+    <div class="form-hint mt-2">در صورت بسته شدن مرورگر بدون خروج، مدت حضور بر مبنای آخرین درخواست ثبت‌شده محاسبه می‌شود.</div>
+   </div>
+  </div>
 </div>
 <style>
 .permission-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.permission-group{border:1px solid var(--line);border-radius:13px;background:#f9fbfc;padding:13px}.permission-group h5{font-size:11px;margin:0 0 9px}.permission-item{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-top:1px solid #edf1f4;font-size:10px}.permission-item:first-of-type{border-top:0}.permission-item input{margin-top:3px}.permission-item b{display:block;color:var(--navy)}.permission-item small{display:block;color:#92a1ad;font-size:8px;margin-top:2px;direction:ltr;text-align:right}

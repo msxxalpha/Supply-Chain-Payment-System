@@ -1,0 +1,12 @@
+@model List<Indamin.Payment.Data.InputQuery>
+@{ViewData["Title"]="مدیریت کوئری‌ها";}
+<div class="page-header">
+ <div><div class="eyebrow">اطلاعات پایه</div><h2>مدیریت کوئری‌ها</h2><p class="text-muted">کوئری‌های خواندنی اتصال به زیرسیستم‌ها را تعریف و مدیریت کنید. اجرای کوئری فقط برای SQLهای SELECT/CTE مجاز است.</p></div>
+ <a class="btn btn-main" href="/InputQueries/Create">افزودن کوئری</a>
+</div>
+<div class="info-box mb-3"><b>کوئری مخصوص دریافت رسید انبار:</b> برای استفاده از دریافت مستقیم در ویزارد، عنوان کوئری باید دقیقاً «اطلاعات رسیدهای خرید انبار» باشد. خروجی آن باید شامل «شماره رسید»، «انبار»، «نام کالا»، «نام تامین کننده»، «مقدار رسید» و «تاریخ رسید» باشد؛ در حالت ریالی، ستون «مبلغ بدهی» نیز لازم است. پارامترهای @@FromDate و @@ToDate به‌صورت خودکار ارسال می‌شوند.</div>
+<div class="table-panel">
+ <div class="table-responsive"><table class="table modern-table"><thead><tr><th>عنوان</th><th>سرور</th><th>پایگاه داده</th><th>احراز هویت</th><th>وضعیت</th><th>آخرین بروزرسانی</th><th>عملیات</th></tr></thead><tbody>
+ @foreach(var x in Model){<tr><td class="fw-bold">@x.Title</td><td>@x.ServerInstance</td><td>@x.DatabaseName</td><td>@(x.AuthenticationMode=="windows"?"Windows":"SQL")</td><td>@(x.Enabled?"فعال":"غیرفعال")</td><td>@x.UpdatedAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-primary" href="/InputQueries/Edit/@x.Id">ویرایش</a><form method="post" action="/InputQueries/Delete" class="d-inline" data-confirm="این کوئری حذف شود؟">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@x.Id"><button class="btn btn-sm btn-outline-danger">حذف</button></form></td></tr>}
+ </tbody></table></div>
+</div>
