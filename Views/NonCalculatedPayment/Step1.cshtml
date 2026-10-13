@@ -88,7 +88,7 @@
                     <tbody>
                     @foreach(var x in Model.AvailableSuppliers)
                     {
-                        <tr data-id="@x.SupplierId" data-title="@x.SupplierTitle" data-initial="@x.InitialClaimAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-current="@x.CurrentDebt.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-total="@x.TotalDebt.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-priority="@x.Priority.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-coverage="@x.Coverage.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-age="@x.AgeRatio.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-overdue="@x.Overdue" data-open="@x.OpenReceiptCount">
+                        <tr data-id="@x.SupplierId" data-title="@x.SupplierTitle" data-initial="@x.InitialClaimAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-current="@x.CurrentDebt.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-total="@x.TotalDebt.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-priority="@x.Priority.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-coverage="@x.Coverage.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-age="@x.AgeRatio.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-overdue="@x.Overdue" data-open="@x.OpenReceiptCount" data-supply-importance="@((ViewBag.ResilienceBySupplier as IReadOnlyDictionary<int, decimal?>)?.GetValueOrDefault(x.SupplierId)?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")" data-resilience="@((ViewBag.ResilienceScoreBySupplier as IReadOnlyDictionary<int, decimal?>)?.GetValueOrDefault(x.SupplierId)?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")">
                             <td class="fw-bold">@x.SupplierTitle</td>
                             <td><span class="priority-pill">@x.Priority</span></td>
                             <td>@x.InitialClaimAmount.ToString("N0")</td>
@@ -198,7 +198,7 @@
       <div>
         <div class="eyebrow">تحلیل اولویت پرداخت</div>
         <h3 id="allocationRecommendationTitle">توصیه تخصیص به تامین‌کنندگان</h3>
-        <p>امتیاز اولویت از مانده مطالبات، سن بدهی نسبت به مهلت تسویه، سررسیدگذشتگی، پوشش پرداخت و تعداد رسیدهای باز استفاده می‌کند. این فهرست پیشنهاد تحلیلی است و جایگزین تصمیم نهایی شما نیست.</p>
+        <p>امتیاز مالی فعلی از شاخص‌های داشبورد می‌آید. در صورت وجود ارزیابی فعال برای پارامترهای انتخاب‌شده، امتیاز تاب‌آوری به‌صورت آزمایشی از ۶۵٪ فشار مالی و ۳۵٪ اهمیت تأمین محاسبه می‌شود؛ نبود امتیاز ارزیابی با «اطلاعات کافی نیست» نمایش داده می‌شود. این توصیه جایگزین تصمیم نهایی نیست.</p>
       </div>
       <button type="button" class="allocation-recommendation-close" data-close-recommendation aria-label="بستن">×</button>
     </header>
@@ -210,7 +210,7 @@
       <table class="table modern-table allocation-recommendation-table">
         <thead><tr>
           <th class="recommendation-check-cell"><input type="checkbox" id="recommendationSelectAll" aria-label="انتخاب یا لغو انتخاب همه ردیف‌ها"></th>
-          <th>رتبه</th><th>تامین‌کننده</th><th>مطالبات کل</th><th>پوشش پرداخت</th><th>رسید باز</th><th>سررسیدگذشته</th><th>سن بدهی/مهلت</th><th>امتیاز اولویت</th>
+          <th>رتبه</th><th>تامین‌کننده</th><th>مطالبات کل</th><th>پوشش پرداخت</th><th>رسید باز</th><th>سررسیدگذشته</th><th>سن بدهی/مهلت</th><th>اهمیت تأمین</th><th>تاب‌آوری</th><th>امتیاز مالی فعلی</th>
         </tr></thead>
         <tbody id="allocationRecommendationRows">
         @foreach(var x in Model.AvailableSuppliers)
@@ -224,6 +224,8 @@
             <td>@x.OpenReceiptCount.ToString("N0")</td>
             <td>@x.Overdue.ToString("N0")</td>
             <td>@x.AgeRatio.ToString("N2")</td>
+            <td>@(((ViewBag.ResilienceBySupplier as IReadOnlyDictionary<int, decimal?>)?.GetValueOrDefault(x.SupplierId)) is decimal si ? si.ToString("N1") : "اطلاعات کافی نیست")</td>
+            <td>@(((ViewBag.ResilienceScoreBySupplier as IReadOnlyDictionary<int, decimal?>)?.GetValueOrDefault(x.SupplierId)) is decimal rs ? rs.ToString("N1") : "اطلاعات کافی نیست")</td>
             <td><span class="priority-pill">@x.Priority.ToString("N1")</span></td>
           </tr>
         }
@@ -298,7 +300,7 @@
     const n=Number(normalizeDigits(raw).replace(/[^0-9]/g,""));
     if(!Number.isInteger(n)||n<1){window.alert("تعداد باید عدد صحیح بزرگ‌تر از صفر باشد.");return;}
     const candidates=[...rowsBody.querySelectorAll("tr")];
-    candidates.sort((a,b)=>Number(b.dataset.priority)-Number(a.dataset.priority)||Number(a.dataset.coverage)-Number(b.dataset.coverage)||Number(b.dataset.total)-Number(a.dataset.total)||Number(b.dataset.overdue)-Number(a.dataset.overdue));
+    candidates.sort((a,b)=>{const ar=a.dataset.resilience!==""?Number(a.dataset.resilience):null,br=b.dataset.resilience!==""?Number(b.dataset.resilience):null;if(ar!==null&&br!==null&&br!==ar)return br-ar;if(ar!==null&&br===null)return -1;if(ar===null&&br!==null)return 1;return Number(b.dataset.priority)-Number(a.dataset.priority)||Number(a.dataset.coverage)-Number(b.dataset.coverage)||Number(b.dataset.total)-Number(a.dataset.total)||Number(b.dataset.overdue)-Number(a.dataset.overdue);});
     candidates.forEach((row,index)=>{
       rowsBody.appendChild(row);
       row.style.display=index<Math.min(n,candidates.length)?"":"none";
