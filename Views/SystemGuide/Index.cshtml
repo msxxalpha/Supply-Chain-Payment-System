@@ -1,0 +1,44 @@
+@{
+ ViewData["Title"]="راهنمای سیستم";
+ var active=(string)(ViewBag.ActiveTab??"calculated");
+}
+<div class="page-header"><div><div class="eyebrow">راهنمای کاربری</div><h2>راهنمای سیستم پرداخت زنجیره تأمین</h2><p class="text-muted">راهنمای بخش‌بندی‌شده برای درک منطق پرداخت، توصیه تخصیص و گزارش‌ها.</p></div></div>
+<style>
+.guide-tabs{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem}.guide-tabs a{padding:.65rem .9rem;border:1px solid #dbe3ea;border-radius:.65rem;color:inherit;text-decoration:none;background:#fff}.guide-tabs a.active{background:var(--navy,#102a43);color:#fff}.guide-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem}.guide-card{border:1px solid #dbe3ea;border-radius:1rem;padding:1rem;background:#fff;height:100%}.guide-card h4{font-size:1rem;font-weight:700;margin-bottom:.65rem}.guide-card p{line-height:1.9}.guide-note{border-right:4px solid var(--blue,#2d7fb3);padding:.8rem 1rem;background:rgba(45,127,179,.07);border-radius:.5rem;margin-top:1rem;line-height:1.9}
+</style>
+<nav class="guide-tabs" aria-label="بخش‌های راهنما">
+<a class="@(active=="calculated"?"active":"")" href="/SystemGuide?tab=calculated">پرداخت محاسباتی</a><a class="@(active=="resilience"?"active":"")" href="/SystemGuide?tab=resilience">توصیه تخصیص غیرمحاسباتی</a><a class="@(active=="dashboard"?"active":"")" href="/SystemGuide?tab=dashboard">داشبورد</a><a class="@(active=="finance"?"active":"")" href="/SystemGuide?tab=finance">گزارش‌های مالی</a><a class="@(active=="supplier"?"active":"")" href="/SystemGuide?tab=supplier">مرور تأمین‌کننده</a>
+</nav>
+@if(active=="calculated"){
+<div class="guide-grid">
+<section class="guide-card"><h4>پارامترها و وزن‌ها</h4><p>محاسبه از پارامترهای فعال و دارای وزن مثبت استفاده می‌کند. مجموع وزن‌های فعال باید ۱۰۰٪ باشد؛ سقف امتیاز پارامتر در سامانه ۵ است. روش امتیازدهی و راهنمای هر پارامتر را در تنظیمات بررسی کنید.</p></section>
+<section class="guide-card"><h4>بودجه و سهم مطالبات</h4><p>بودجه تخصیص، سهم مطالبات استقراری و جاری و تنظیمات سامانه بر پیش‌نمایش اثر دارند. سهم استقراری و جاری در هر نوع پرداخت باید مجموعاً ۱۰۰٪ شود.</p></section>
+<section class="guide-card"><h4>پیش‌نمایش و ثبت</h4><p>پیش‌نمایش برای بررسی امتیازها، مبالغ و هشدارهاست. پیش از تأیید، بودجه، مانده بدهی قابل پرداخت و پرداخت‌های قبلی را تطبیق دهید و از ثبت تکراری دستور پرداخت اجتناب کنید.</p></section>
+</div><div class="guide-note">هر تغییر در فرمول یا تنظیمات باید هم‌زمان در این راهنما و آزمون‌های نرم‌افزار منعکس شود.</div>
+}else if(active=="resilience"){
+<div class="guide-grid">
+<section class="guide-card"><h4>مشارکت پارامتر</h4><p>در «تنظیمات ← پارامترهای پرداخت»، گزینه «مشارکت در توصیه پرداخت غیرمحاسباتی» را فقط برای پارامترهایی فعال کنید که ارزیابی آن‌ها اهمیت تأمین را نشان می‌دهد. گزینه پیش‌فرض خاموش است و امتیازهای قبلی تغییر نمی‌کنند.</p></section>
+<section class="guide-card"><h4>اهمیت تأمین</h4><p>میانگین امتیازهای تجمیعی فعال موجود برای پارامترهای انتخاب‌شده به مقیاس ۰ تا ۱۰۰ تبدیل می‌شود. پارامترهای مشارکت‌کننده در این نسخه هم‌وزن‌اند. امتیاز مفقود یا نامعتبر نادیده گرفته می‌شود.</p></section>
+<section class="guide-card"><h4>امتیاز تاب‌آوری آزمایشی</h4><p>۶۵٪ × شاخص اولویت مالی فعلی + ۳۵٪ × اهمیت تأمین. این نسبت موقت است و پیش از تبدیل به سیاست سازمانی باید با نتایج تاریخی ارزیابی و کالیبره شود.</p></section>
+<section class="guide-card"><h4>تفسیر توصیه</h4><p>اگر امتیاز اهمیت تأمین موجود نباشد، «اطلاعات کافی نیست» نمایش داده می‌شود؛ صفر ساختگی تولید نمی‌شود. برای چنین ردیف‌هایی شاخص مالی فعلی معیار جایگزین ترتیب است.</p></section>
+</div><div class="guide-note">توصیه پرداختی را خودکار ثبت نمی‌کند. انتخاب دستی تأمین‌کنندگان حفظ شده است؛ پیش از ادامه، بدهی معتبر، سقف بودجه و پرداخت‌های قبلی را کنترل کنید.</div>
+}else if(active=="dashboard"){
+<div class="guide-grid">
+<section class="guide-card"><h4>شاخص اولویت مالی</h4><p>ترکیب شاخص‌های مالی فعلی شامل مانده مطالبات نسبت به بیشینه، سن بدهی، نسبت رسیدهای سررسیدگذشته، کمبود پوشش پرداخت و تعداد رسیدهای باز است؛ وزن‌های آن‌ها به‌ترتیب ۳۰٪، ۳۰٪، ۲۰٪، ۱۵٪ و ۵٪ است.</p></section>
+<section class="guide-card"><h4>پوشش پرداخت</h4><p>پوشش را همراه با مانده بدهی و تاریخ رسیدها بخوانید؛ پوشش بالا به‌تنهایی به معنی تسویه کامل همه اقلام نیست.</p></section>
+<section class="guide-card"><h4>فیلترها و نمودارها</h4><p>فیلترها دامنه بررسی را محدود و نمودارها روند و ترکیب را خلاصه می‌کنند. بازه زمانی، واحد مبلغ و فیلترهای فعال را قبل از برداشت مدیریتی کنترل کنید.</p></section>
+</div>
+}else if(active=="finance"){
+<div class="guide-grid">
+<section class="guide-card"><h4>مبلغ پرداخت</h4><p>مبلغ را با نوع پرداخت، تاریخ، وضعیت اجرا و سابقه دستور پرداخت بررسی کنید. پیش‌نویس را با پرداخت دارای اثر مالی یکسان فرض نکنید.</p></section>
+<section class="guide-card"><h4>مانده مطالبات</h4><p>رسیدها، قیمت معتبر، مطالبات استقراری و جاری و پرداخت‌های دارای اثر مالی بر مانده اثر دارند. در صورت مغایرت، تاریخ رسید و سابقه تغییر قیمت را بررسی کنید.</p></section>
+<section class="guide-card"><h4>کنترل نهایی</h4><p>مانده بدهی، مبلغ تخصیص، بودجه، پرداخت‌های قبلی، تاریخ رسید و قیمت معتبر را تطبیق دهید. داده ناقص را مبنای گزارش قطعی قرار ندهید.</p></section>
+</div>
+}else{
+<div class="guide-grid">
+<section class="guide-card"><h4>مطالبات استقراری و جاری</h4><p>ترکیب مطالبات و وضعیت مالی هر تأمین‌کننده را به تفکیک نوع مطالبه و در کنار تاریخ و وضعیت پرداخت بررسی کنید.</p></section>
+<section class="guide-card"><h4>قطعات مرتبط</h4><p>ارتباط قطعه–تأمین‌کننده زمینه بررسی امتیازها و اهمیت تأمین را فراهم می‌کند. وضعیت فعال ارتباط بر داده‌های مورد استفاده در توصیه اثر دارد.</p></section>
+<section class="guide-card"><h4>تاریخچه و تفسیر</h4><p>روند رسیدها، پرداخت‌ها و قیمت‌های معتبر را در بازه زمانی یکسان مقایسه کنید. هیچ شاخص منفردی برای تصمیم پرداخت کافی نیست.</p></section>
+</div>
+}
+<div class="mt-4"><a class="btn btn-outline-secondary" href="/NonCalculatedPayment">بازگشت به پرداخت غیرمحاسباتی</a> <a class="btn btn-outline-secondary" href="/Setup/Parameters">پارامترهای پرداخت</a> <a class="btn btn-outline-secondary" href="/Reports">گزارش‌های مالی</a></div>
