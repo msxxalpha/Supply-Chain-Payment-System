@@ -18,7 +18,7 @@ public sealed class ResilienceRecommendationService(AppDbContext db, SupplierPri
   if(parameters.Count==0)return suppliers.Select(s=>new ResilienceRecommendationScore{SupplierId=s.SupplierId}).ToList();
   var ids=parameters.Select(p=>p.Id).ToArray();
   var maxScores=parameters.ToDictionary(p=>p.Id,p=>p.MaxScore);
-  var evaluations=await db.SupplierPartEvaluations.AsNoTracking()
+  var evaluations=await db.SupplierPartAssessorEvaluations.AsNoTracking()
    .Where(e=>!e.IsDefault&&ids.Contains(e.PaymentParameterId)&&e.SupplierPart!=null&&e.SupplierPart.IsActive&&e.SupplierPart.Supplier!=null&&e.SupplierPart.Supplier.IsActive&&!e.SupplierPart.Supplier.IsNonParticipating&&e.SupplierPart.Part!=null&&e.SupplierPart.Part.IsActive)
    .Select(e=>new{e.SupplierPartId,e.SupplierPart!.SupplierId,e.PaymentParameterId,e.Score}).ToListAsync();
   // Ignore system-generated default scores; average assessors per part/parameter first.
@@ -26,7 +26,7 @@ public sealed class ResilienceRecommendationService(AppDbContext db, SupplierPri
    .GroupBy(e=>new{e.SupplierPartId,e.SupplierId,e.PaymentParameterId})
    .Select(g=>new{g.Key.SupplierId,g.Key.PaymentParameterId,Score=g.Average(x=>x.Score)})
    .ToList();
-  var importance=perPartParameter.GroupBy(e=>e.SupplierId).ToDictionary(g=>g.Key,g=>(decimal?)Math.Round(g.Average(e=>e.Score/maxScores[e.PaymentParameterId])*100m,1));
+  var importance=perPartParameter.GroupBy(e=>e.SupplierId).ToDictionary(g=>g.Key,g=>(decimal?)Math.Round(g.Average(e=>(e.Score-1m)/(maxScores[e.PaymentParameterId]-1m))*100m,1));
   var financial=suppliers.ToDictionary(s=>s.SupplierId,s=>Math.Clamp(s.Priority,0m,100m));
   return suppliers.Select(s=>{
    importance.TryGetValue(s.SupplierId,out var supply);
