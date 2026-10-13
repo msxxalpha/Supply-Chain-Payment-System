@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Indamin.Payment.Controllers;
 
 [Authorize(Policy = SecurityPermissions.PaymentNonCalculated)]
-public class NonCalculatedPaymentController(AppDbContext db, SupplierPriorityService priority, PaymentCalculationService calc) : Controller
+public class NonCalculatedPaymentController(AppDbContext db, SupplierPriorityService priority, PaymentCalculationService calc, ResilienceRecommendationService resilience) : Controller
 {
     const string SessionKey = "NonCalculatedPaymentWizardState";
     int UserId => int.TryParse(User.FindFirst("UserId")?.Value, out var id) ? id : 0;
@@ -27,6 +27,9 @@ public class NonCalculatedPaymentController(AppDbContext db, SupplierPrioritySer
             Title = "پرداخت غیرمحاسباتی"
         };
         existing.AvailableSuppliers = await priority.GetAsync();
+        var scores = await resilience.GetScoresAsync();
+        ViewBag.ResilienceBySupplier = scores.ToDictionary(x => x.SupplierId, x => x.SupplyImportance);
+        ViewBag.ResilienceScoreBySupplier = scores.ToDictionary(x => x.SupplierId, x => x.ResilienceScore);
         return View(existing);
     }
 
