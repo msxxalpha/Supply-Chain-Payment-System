@@ -6,7 +6,7 @@ public sealed class SystemGuideController : Controller
 {
  public IActionResult Index(string tab="calculated")
  {
-  var allowed=new[]{"calculated","resilience","dashboard","finance","supplier"};
+  var allowed=new[]{"calculated","resilience","dashboard","finance","supplier","prices"};
   ViewBag.ActiveTab=allowed.Contains(tab)?tab:"calculated";
   return View();
  }

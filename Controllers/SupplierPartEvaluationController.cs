@@ -240,6 +240,107 @@ public class SupplierPartEvaluationController(AppDbContext db) : Controller
         return RedirectToAction(nameof(Index), new { q, page, pageSize });
     }
 
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveBulk(
+        List<BulkEvaluatorScoreEditItem> items,
+        int? singleSupplierPartId,
+        string? q,
+        int page = 1,
+        int pageSize = 25)
+    {
+        pageSize = NormalizePageSize(pageSize);
+        page = Math.Max(1, page);
+        try
+        {
+            var parameters = await GetPermittedParametersAsync();
+            var allowed = parameters.ToDictionary(x => x.Id);
+            var posted = (items ?? [])
+                .Where(x => x.Score.HasValue)
+                .GroupBy(x => (x.SupplierPartId, x.ParameterId))
+                .Select(g => g.Last())
+                .Where(x => !singleSupplierPartId.HasValue || x.SupplierPartId == singleSupplierPartId.Value)
+                .ToList();
+
+            if (posted.Count == 0)
+                throw new InvalidOperationException("هیچ امتیازی برای ثبت وارد نشده است؛ خانه‌های خالی نادیده گرفته می‌شوند.");
+
+            var mappingIds = posted.Select(x => x.SupplierPartId).Distinct().ToList();
+            var mappings = await db.SupplierParts
+                .Include(x => x.Supplier)
+                .Include(x => x.Part)
+                .Where(x => mappingIds.Contains(x.Id) && x.IsActive &&
+                    x.Supplier!.IsActive && !x.Supplier.IsNonParticipating && x.Part!.IsActive)
+                .ToDictionaryAsync(x => x.Id);
+
+            foreach (var item in posted)
+            {
+                if (!mappings.ContainsKey(item.SupplierPartId))
+                    throw new InvalidOperationException($"ردیف قطعه–تأمین‌کننده با شناسه {item.SupplierPartId} فعال یا معتبر نیست؛ صفحه را تازه‌سازی کنید.");
+                if (!allowed.TryGetValue(item.ParameterId, out var parameter))
+                    throw new InvalidOperationException($"دسترسی ثبت امتیاز پارامتر «شناسه {item.ParameterId}» برای شما فعال نیست.");
+                if (item.Score!.Value < 1 || item.Score.Value > parameter.MaxScore)
+                    throw new InvalidOperationException($"امتیاز «{parameter.Title}» برای قطعه «{mappings[item.SupplierPartId].Part!.Title}» باید بین ۱ تا {parameter.MaxScore:0.##} باشد.");
+            }
+
+            await using var tx = await db.Database.BeginTransactionAsync();
+            var now = DateTime.UtcNow;
+            foreach (var item in posted)
+            {
+                var score = Math.Round(item.Score!.Value, 2);
+                var row = await db.SupplierPartAssessorEvaluations.SingleOrDefaultAsync(x =>
+                    x.SupplierPartId == item.SupplierPartId &&
+                    x.PaymentParameterId == item.ParameterId &&
+                    x.AssessorUserId == UserId);
+
+                if (row == null)
+                {
+                    db.SupplierPartAssessorEvaluations.Add(new SupplierPartAssessorEvaluation
+                    {
+                        SupplierPartId = item.SupplierPartId,
+                        PaymentParameterId = item.ParameterId,
+                        AssessorUserId = UserId,
+                        Score = score,
+                        CreatedAt = now,
+                        UpdatedAt = now
+                    });
+                }
+                else
+                {
+                    row.Score = score;
+                    row.IsDefault = false;
+                    row.UpdatedAt = now;
+                }
+            }
+
+            await db.SaveChangesAsync();
+            foreach (var key in posted.Select(x => (x.SupplierPartId, x.ParameterId)).Distinct())
+                await RefreshAggregateAsync(key.SupplierPartId, key.ParameterId);
+            foreach (var mappingId in mappingIds)
+            {
+                var mapping = mappings[mappingId];
+                db.AuditLogs.Add(new AuditLog
+                {
+                    Action = "ASSESS_BULK",
+                    Entity = "SupplierPartAssessorEvaluation",
+                    EntityId = mappingId.ToString(),
+                    Details = $"ثبت گروهی امتیازهای قطعه «{mapping.Part?.Title}» / تأمین‌کننده «{mapping.Supplier?.Title}» توسط {User.Identity?.Name ?? "کاربر"}؛ تعداد پارامترها: {posted.Count(x => x.SupplierPartId == mappingId)}",
+                    UserId = UserId
+                });
+            }
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            TempData["Result"] = $"ثبت موفق؛ {posted.Count:N0} امتیاز برای {mappingIds.Count:N0} ردیف قطعه–تأمین‌کننده ذخیره و میانگین‌ها به‌روزرسانی شد.";
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = "ثبت گروهی انجام نشد و امتیازهای این عملیات ذخیره نشدند: " + ex.Message;
+        }
+
+        return RedirectToAction(nameof(Index), new { q, page, pageSize });
+    }
+
     async Task<List<PaymentParameter>> GetPermittedParametersAsync()
     {
         var parameters = await db.PaymentParameters
@@ -356,6 +457,7 @@ public class SupplierPartEvaluationController(AppDbContext db) : Controller
         string UpdatedAtJalali);
 
     public record EvaluatorScoreEditItem(int ParameterId, decimal Score);
+    public record BulkEvaluatorScoreEditItem(int SupplierPartId, int ParameterId, decimal? Score);
     public record EvaluatorVm(
         List<SupplierPart> Mappings,
         List<PaymentParameter> Parameters,

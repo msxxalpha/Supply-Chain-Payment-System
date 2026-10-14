@@ -86,6 +86,16 @@ else
 
         @await Html.PartialAsync("_TablePagination", (Model.Page, totalPages, Model.PageSize, Model.Search ?? "", "/SupplierPartEvaluation"))
 
+        <form id="bulk-assess-form" method="post" action="/SupplierPartEvaluation/SaveBulk">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="q" value="@Model.Search">
+            <input type="hidden" name="page" value="@Model.Page">
+            <input type="hidden" name="pageSize" value="@Model.PageSize">
+        </form>
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+            <div class="text-muted small">امتیازهای چند ردیف را وارد کنید و یک‌بار ثبت گروهی را بزنید. خانه‌های خالی نادیده گرفته می‌شوند.</div>
+            <button form="bulk-assess-form" class="btn btn-main" type="submit">ثبت همه امتیازهای واردشده</button>
+        </div>
         <div class="table-responsive table-scroll">
             <table class="table modern-table align-middle">
                 <thead>
@@ -103,36 +113,29 @@ else
                     </tr>
                 </thead>
                 <tbody>
+                @{
+                    var scoreIndex = 0;
+                }
                 @foreach (var m in Model.Mappings)
                 {
-                    var formId = $"assess-form-{m.Id}";
                     <tr>
                         <td class="fw-bold">@m.Supplier?.Code - @m.Supplier?.Title</td>
                         <td>@m.Part?.Code - @m.Part?.Title</td>
-                        @{
-                            var parameterIndex = 0;
-                        }
                         @foreach (var p in Model.Parameters)
                         {
                             var mine = Model.MyScores.FirstOrDefault(x => x.SupplierPartId == m.Id && x.PaymentParameterId == p.Id);
                             var avgScores = Model.AllScores.Where(x => x.SupplierPartId == m.Id && x.PaymentParameterId == p.Id).Select(x => x.Score).ToList();
                             var average = avgScores.Count == 0 ? 1m : Math.Round(avgScores.Average(), 2);
                             <td class="score-cell">
-                                <input form="@formId" class="form-control score-select" type="number" min="1" max="@p.MaxScore" step="0.1" name="items[@parameterIndex].Score" value="@(mine?.Score.ToString("0.##") ?? "")" placeholder="امتیاز">
-                                <input form="@formId" type="hidden" name="items[@parameterIndex].ParameterId" value="@p.Id">
+                                <input form="bulk-assess-form" class="form-control score-select" type="number" min="1" max="@p.MaxScore" step="0.1" name="items[@scoreIndex].Score" value="@(mine?.Score.ToString("0.##") ?? "")" placeholder="امتیاز" aria-label="امتیاز @p.Title برای @m.Part?.Title">
+                                <input form="bulk-assess-form" type="hidden" name="items[@scoreIndex].SupplierPartId" value="@m.Id">
+                                <input form="bulk-assess-form" type="hidden" name="items[@scoreIndex].ParameterId" value="@p.Id">
                                 <small class="subtle d-block mt-1">میانگین: @average.ToString("0.##")</small>
                             </td>
-                            parameterIndex++;
+                            scoreIndex++;
                         }
                         <td class="text-nowrap">
-                            <form id="@formId" method="post" action="/SupplierPartEvaluation/Save">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="supplierPartId" value="@m.Id">
-                                <input type="hidden" name="q" value="@Model.Search">
-                                <input type="hidden" name="page" value="@Model.Page">
-                                <input type="hidden" name="pageSize" value="@Model.PageSize">
-                            </form>
-                            <button form="@formId" class="btn btn-sm btn-main">ثبت امتیازها</button>
+                            <button form="bulk-assess-form" class="btn btn-sm btn-outline-primary" type="submit" name="singleSupplierPartId" value="@m.Id">ثبت این ردیف</button>
                         </td>
                     </tr>
                 }
