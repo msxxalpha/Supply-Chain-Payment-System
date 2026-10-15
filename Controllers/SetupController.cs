@@ -17,14 +17,14 @@ namespace Indamin.Payment.Controllers;
 
  [Authorize(Policy=SecurityPermissions.SetupParameters)]
  [HttpPost][ValidateAntiForgeryToken]
-  public async Task<IActionResult> AddParameter(string code,string title,PaymentParameterType type,decimal weight,string scoringGuide,ParameterScoringMethod? method=null,int sortOrder=1)
+  public async Task<IActionResult> AddParameter(string code,string title,PaymentParameterType type,decimal weight,string scoringGuide,ParameterScoringMethod? method=null,int sortOrder=1,bool participatesInNonCalculatedRecommendation=false)
   {
    var scoringMethod=method ?? ParameterScoringMethod.Manual;code=code?.Trim()??"";title=title?.Trim()??"";
    if(code==""||title==""||weight<0||weight>100) TempData["Error"]="اطلاعات پارامتر نامعتبر است.";
    else if(await db.PaymentParameters.AnyAsync(x=>x.Code==code)) TempData["Error"]="کد پارامتر تکراری است.";
    else
    {
-    var parameter=new PaymentParameter{Code=code,Title=title,Type=type,Weight=weight,MaxScore=5,ScoringGuide=scoringGuide?.Trim()??"",ScoringMethod=scoringMethod,SortOrder=Math.Max(1,sortOrder),IsActive=true};
+    var parameter=new PaymentParameter{Code=code,Title=title,Type=type,Weight=weight,MaxScore=5,ScoringGuide=scoringGuide?.Trim()??"",ScoringMethod=scoringMethod,SortOrder=Math.Max(1,sortOrder),IsActive=true,ParticipatesInNonCalculatedRecommendation=participatesInNonCalculatedRecommendation};
     db.PaymentParameters.Add(parameter);await db.SaveChangesAsync();
     if(parameter.IsActive && parameter.Weight>0 && parameter.ScoringMethod==ParameterScoringMethod.Manual)
     {
@@ -38,7 +38,7 @@ namespace Indamin.Payment.Controllers;
   }
  [Authorize(Policy=SecurityPermissions.SetupParameters)]
  [HttpPost][ValidateAntiForgeryToken]
-  public async Task<IActionResult> EditParameter(int id,string code,string title,PaymentParameterType type,decimal weight,string scoringGuide,ParameterScoringMethod method,int sortOrder,bool isActive=false)
+  public async Task<IActionResult> EditParameter(int id,string code,string title,PaymentParameterType type,decimal weight,string scoringGuide,ParameterScoringMethod method,int sortOrder,bool isActive=false,bool participatesInNonCalculatedRecommendation=false)
   {
    var p=await db.PaymentParameters.FindAsync(id);if(p==null)return NotFound();code=code?.Trim()??"";title=title?.Trim()??"";
    if(code==""||title==""||weight<0||weight>100) TempData["Error"]="اطلاعات پارامتر نامعتبر است.";
@@ -46,7 +46,7 @@ namespace Indamin.Payment.Controllers;
    else
    {
     p.Code=code;p.Title=title;p.Type=type;p.Weight=weight;p.ScoringGuide=scoringGuide?.Trim()??"";
-    p.ScoringMethod=method;p.SortOrder=Math.Max(1,sortOrder);p.IsActive=isActive;
+    p.ScoringMethod=method;p.SortOrder=Math.Max(1,sortOrder);p.IsActive=isActive;p.ParticipatesInNonCalculatedRecommendation=participatesInNonCalculatedRecommendation;
     await db.SaveChangesAsync();
     if(p.IsActive&&p.Weight>0&&p.ScoringMethod==ParameterScoringMethod.Manual){await EnsureEvaluatorParameterPermissionAsync(p);await EnsureDefaultEvaluationsAsync();}
     await Log("UPDATE","PaymentParameter",id.ToString(),title);TempData["Result"]="پارامتر به‌روزرسانی شد.";
