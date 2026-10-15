@@ -5,11 +5,11 @@ if(string.IsNullOrWhiteSpace(connectionString))
     connectionString=Environment.GetEnvironmentVariable("SQLSERVER_CONNECTION_STRING");
 if(string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("Connection string is not configured. Set ConnectionStrings:Default (or ConnectionStrings__Default in IIS/environment) to a SQL Server connection string. For SQL authentication use User ID and Password; do not use Trusted_Connection/Integrated Security unless Windows authentication is intentionally configured for the application identity.");
-b.Services.AddControllersWithViews();b.Services.AddDataProtection();b.Services.AddDbContext<AppDbContext>(o=>o.UseSqlServer(connectionString));b.Services.AddScoped<CompanySettingsService>();b.Services.AddScoped<ExcelService>();b.Services.AddScoped<PaymentCalculationService>();b.Services.AddScoped<SupplierPriceDebtAdjustmentService>();b.Services.AddScoped<PaymentOrderPdfService>();b.Services.AddScoped<SupplierPriorityService>();b.Services.AddScoped<ResilienceRecommendationService>();b.Services.AddScoped<FinancialReportingService>();b.Services.AddScoped<ReportCredentialProtector>();b.Services.AddScoped<InputQueryService>();b.Services.AddDistributedMemoryCache();b.Services.AddSession(o=>{o.Cookie.HttpOnly=true;o.Cookie.IsEssential=true;o.IdleTimeout=TimeSpan.FromHours(4);});b.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o =>
+b.Services.AddControllersWithViews();b.Services.AddDataProtection();b.Services.AddDbContext<AppDbContext>(o=>o.UseSqlServer(connectionString));b.Services.AddScoped<CompanySettingsService>();b.Services.AddScoped<ExcelService>();b.Services.AddScoped<PaymentCalculationService>();b.Services.AddScoped<SupplierPriceDebtAdjustmentService>();b.Services.AddScoped<PaymentOrderPdfService>();b.Services.AddScoped<SupplierPriorityService>();b.Services.AddScoped<ResilienceRecommendationService>();b.Services.AddHostedService<UserActivitySessionCleanupService>();b.Services.AddScoped<FinancialReportingService>();b.Services.AddScoped<ReportCredentialProtector>();b.Services.AddScoped<InputQueryService>();b.Services.AddDistributedMemoryCache();b.Services.AddSession(o=>{o.Cookie.HttpOnly=true;o.Cookie.IsEssential=true;o.IdleTimeout=TimeSpan.FromMinutes(30);});b.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o =>
 {
     o.LoginPath = "/Account/Login";
     o.AccessDeniedPath = "/Account/Denied";
-    o.ExpireTimeSpan = TimeSpan.FromHours(8);
+    o.ExpireTimeSpan = TimeSpan.FromMinutes(30);
     o.SlidingExpiration = true;
     // Rebuild role and permission claims from the database for each authenticated request.
     // This keeps active role/user changes from being hidden behind an old authentication cookie.
@@ -115,38 +115,45 @@ app.Use(async (context,next)=>{
 });
 app.UseAuthorization();
 app.Use(async (context,next)=>{
+    var path=context.Request.Path;
+    var isLogoutRequest=path.Equals("/Account/Logout",StringComparison.OrdinalIgnoreCase);
     await next();
-    if(context.User.Identity?.IsAuthenticated==true)
+    // Logout closes the activity record inside AccountController. Do not recreate it
+    // after the action has signed the user out.
+    if(isLogoutRequest || context.User.Identity?.IsAuthenticated!=true) return;
+    var userIdValue=context.User.FindFirst("UserId")?.Value;
+    if(!int.TryParse(userIdValue,out var userId)) return;
+    try
     {
-        var userIdValue=context.User.FindFirst("UserId")?.Value;
-        if(int.TryParse(userIdValue,out var userId))
+        var db=context.RequestServices.GetRequiredService<AppDbContext>();
+        var shouldTrack=await db.UserRoles.AnyAsync(x=>x.UserId==userId && x.Role!.IsActive && x.Role.IsEvaluatorLogEnabled);
+        if(!shouldTrack) return;
+        var now=DateTime.UtcNow;
+        var session=await db.UserActivitySessions
+            .Where(x=>x.UserId==userId && x.LogoutAtUtc==null)
+            .OrderByDescending(x=>x.LoginAtUtc)
+            .FirstOrDefaultAsync();
+        if(session==null)
         {
-            try
-            {
-                var db=context.RequestServices.GetRequiredService<AppDbContext>();
-                var shouldTrack=await db.UserRoles.AnyAsync(x=>x.UserId==userId && x.Role!.IsActive && x.Role.IsEvaluatorLogEnabled);
-                if(!shouldTrack)return;
-                var now=DateTime.UtcNow;
-                var session=await db.UserActivitySessions
-                    .Where(x=>x.UserId==userId && x.LogoutAtUtc==null)
-                    .OrderByDescending(x=>x.LoginAtUtc)
-                    .FirstOrDefaultAsync();
-                if(session==null)
-                {
-                    db.UserActivitySessions.Add(new UserActivitySession{UserId=userId,RoleCode="EVALUATOR_ACTIVITY",LoginAtUtc=now,LastSeenAtUtc=now,DurationSeconds=0});
-                }
-                else
-                {
-                    session.LastSeenAtUtc=now;
-                    session.DurationSeconds=Math.Max(0,(int)Math.Min(int.MaxValue,(now-session.LoginAtUtc).TotalSeconds));
-                }
-                await db.SaveChangesAsync();
-            }
-            catch
-            {
-                // Activity logging must never break the user's request.
-            }
+            db.UserActivitySessions.Add(new UserActivitySession{UserId=userId,RoleCode="EVALUATOR_ACTIVITY",LoginAtUtc=now,LastSeenAtUtc=now,DurationSeconds=0});
         }
+        else if(now-session.LastSeenAtUtc > TimeSpan.FromMinutes(30))
+        {
+            // Never count the idle gap as attendance, even if the cleanup worker
+            // has not run yet.
+            session.LogoutAtUtc=session.LastSeenAtUtc;
+            session.DurationSeconds=Math.Max(0,(int)Math.Min(int.MaxValue,(session.LastSeenAtUtc-session.LoginAtUtc).TotalSeconds));
+        }
+        else
+        {
+            session.LastSeenAtUtc=now;
+            session.DurationSeconds=Math.Max(0,(int)Math.Min(int.MaxValue,(now-session.LoginAtUtc).TotalSeconds));
+        }
+        await db.SaveChangesAsync();
+    }
+    catch
+    {
+        // Activity logging must never break the user's request.
     }
 });
 app.MapControllerRoute("default","{controller=Home}/{action=Index}/{id?}");app.Run();
